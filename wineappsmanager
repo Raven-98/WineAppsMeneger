@@ -1,0 +1,9 @@
+#!/bin/bash
+
+INSTALL_DIR="$HOME/.wineappsmanager"
+VENV_DIR="$INSTALL_DIR/venv"
+PYTHON="$VENV_DIR/bin/python"
+
+
+source "$VENV_DIR/bin/activate"
+python "$INSTALL_DIR/main.py"
