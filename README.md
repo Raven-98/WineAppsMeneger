@@ -16,8 +16,6 @@
 
 ## 🛠 Встановлення
 
-1. Клонуй репозиторій:
-
 ```bash
 git clone https://github.com/Raven-98/WineAppsMeneger.git
 cd WineAppsMeneger
