@@ -17,7 +17,7 @@
 ## 🛠 Встановлення
 
 ```bash
-git clone https://github.com/Raven-98/WineAppsMeneger.git
+git clone https://github.com/Raven-98/WineAppsMаnаger.git
 cd WineAppsMeneger
 chmod +x install.sh
 ./install.sh
