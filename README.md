@@ -18,7 +18,7 @@
 
 ```bash
 git clone https://github.com/Raven-98/WineAppsMаnаger.git
-cd WineAppsMeneger
+cd WineAppsManager
 chmod +x install.sh
 ./install.sh
 ```
