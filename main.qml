@@ -680,7 +680,8 @@ ApplicationWindow {
 
                             Text {
                                 id: wineRowText
-                                text: "Wine-" + model.name
+                                // text: "Wine-" + model.name
+                                text: model.name
                                 anchors.verticalCenter: parent.verticalCenter
                                 wrapMode: Text.Wrap
                                 elide: Text.ElideRight

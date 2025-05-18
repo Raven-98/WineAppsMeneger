@@ -40,6 +40,7 @@ WINE_VERSIONS_DIR = APP_SETTINGS_DIR + "/wine-versions"
 # WINE_SOURCE_URL = "https://dl.winehq.org/wine/source/"
 # WINE_DIST_URL = "https://dl.winehq.org/wine-builds/ubuntu/dists/"
 WINE_GE_RELEASES_URL = "https://api.github.com/repos/GloriousEggroll/wine-ge-custom/releases"
+PROTON_GE_RELEASES_URL = "https://api.github.com/repos/GloriousEggroll/proton-ge-custom/releases"
 WIN_VER_MAP = {
     "Windows XP": "winxp",
     "Windows 7": "win7",
@@ -480,6 +481,7 @@ class AppEngine(QObject):
             versions[sys_wine] = ["system", True]
         # versions = await self._get_wine_ge_versions()
         versions.update(await self._get_wine_ge_versions())
+        versions.update(await self._get_proton_ge_versions())
         self.getedWineList.emit(versions)
 
     def _find_system_wine(self) -> str:
@@ -572,23 +574,29 @@ class AppEngine(QObject):
 ###
 
     async def _get_wine_ge_versions(self) -> dict:
+        return await self._fetch_ge_releases(WINE_GE_RELEASES_URL, "Wine")
+
+    async def _get_proton_ge_versions(self) -> dict:
+        return await self._fetch_ge_releases(PROTON_GE_RELEASES_URL, "Proton")
+
+    async def _fetch_ge_releases(self, url: str, v: str) -> dict:
         async with aiohttp.ClientSession() as session:
-            async with session.get(WINE_GE_RELEASES_URL) as response:
+            async with session.get(url) as response:
                 if response.status == 200:
                     installed_wines = self._get_installed_wines()
                     releases = await response.json()
                     # versions = {release['tag_name'] : release['assets'][0]['browser_download_url'] for release in releases}
                     versions = {}
                     for release in releases:
-                        version_name = release['tag_name']
+                        version_name = f"{v} - {release['tag_name']}"
                         download_url = None
-                        installed = True if version_name in installed_wines else False
+                        installed = version_name in installed_wines
                         for asset in release['assets']:
-                            if asset['name'].endswith('.tar.xz'):
+                            if asset['name'].endswith('.tar.xz') or asset['name'].endswith('.tar.gz'):
                                 download_url = asset['browser_download_url']
                                 break
                         if not download_url:
-                            self.error.emit("No .tar.xz archive found in this release for {version_name}.")
+                            self.error.emit(f"No .tar.xz archive found in this release for {version_name}.")
                             continue
                         versions[version_name] = [download_url, installed]
                     return versions
@@ -596,12 +604,13 @@ class AppEngine(QObject):
                     self.error.emit(f"Failed to retrieve releases: {response.status}")
                     return {}
 
-    async def _download_wine_ge_version(self, version: str, download_url: str) -> None:
+    async def _download_wine_ge_releases(self, version: str, download_url: str) -> None:
         self.message.emit(f"Downloading Wine GE version {version}...")
-        save_path = Path.home() / WINE_VERSIONS_DIR / f"{version}.tar.xz"
+        tar_type = download_url.split('/')[-1].split('.')[-1]
+        save_path = Path.home() / WINE_VERSIONS_DIR / f"{version}.tar.{tar_type}"
         if save_path.exists():
             self.message.emit(f"{version} already exists at {save_path}. Skipping download.")
-            self._extract_tar_xz(version)
+            self._extract_tar(version)
             return
         save_path.parent.mkdir(parents=True, exist_ok=True)
         try:
@@ -615,31 +624,52 @@ class AppEngine(QObject):
                                     break
                                 f.write(chunk)
                         self.message.emit(f"Downloaded {version} to {save_path}")
-                        self._extract_tar_xz(version)
+                        self._extract_tar(version)
                     else:
                         self.error.emit(f"Failed to download {version}: {response.status}")
         except Exception as e:
              self.error.emit(f"Error downloading {version}: {str(e)}")
         self.wineStatusChanged.emit()
 
-    def _extract_tar_xz(self, version: str) -> None:
-        archive_path = Path.home() / WINE_VERSIONS_DIR / f"{version}.tar.xz"
-        extract_to = Path.home() / WINE_VERSIONS_DIR
-        if not Path(archive_path).exists():
-            self.error.emit(f"Archive {archive_path} does not exist.")
-            return
+    def _extract_tar(self, version: str) -> None:
+        archive_dir = Path.home() / WINE_VERSIONS_DIR
+        archive_path = archive_dir / f"{version}.tar.xz"
+        if not archive_path.exists():
+            archive_path = archive_dir / f"{version}.tar.gz"
+            if not archive_path.exists():
+                self.error.emit(f"Archive for {version} (.tar.xz or .tar.gz) does not exist.")
+                return
+
+        extract_to = archive_dir
         extract_to.mkdir(parents=True, exist_ok=True)
+
+        # Визначаємо режим архіву
+        if archive_path.suffixes[-2:] == ['.tar', '.xz']:
+            mode = "r:xz"
+        elif archive_path.suffixes[-2:] == ['.tar', '.gz']:
+            mode = "r:gz"
+        else:
+            self.error.emit(f"Unsupported archive format: {archive_path.name}")
+            return
+
         try:
-            with tarfile.open(archive_path, "r:xz") as tar:
+            with tarfile.open(archive_path, mode) as tar:
                 tar.extractall(path=extract_to, filter=self._filter_function)
-            with tarfile.open(archive_path, "r:xz") as tar:
+
+            with tarfile.open(archive_path, mode) as tar:
                 members = tar.getmembers()
+                if not members:
+                    self.error.emit(f"No files found in archive {archive_path.name}")
+                    return
                 top_level_directory = members[0].name.split('/')[0]
-            original_folder_path = os.path.join(extract_to, top_level_directory)
-            renamed_folder_path = os.path.join(extract_to, version)
-            if os.path.exists(original_folder_path):
+
+            original_folder_path = extract_to / top_level_directory
+            renamed_folder_path = extract_to / version
+            if original_folder_path.exists():
                 os.rename(original_folder_path, renamed_folder_path)
+
             self.message.emit(f"Extracted {version} to {extract_to}")
+
         except tarfile.TarError as e:
             self.error.emit(f"Error extracting {version}: {str(e)}")
         except Exception as e:
@@ -774,7 +804,7 @@ class AppEngine(QObject):
 
     @Slot(str, str)
     def installWine(self, version: str, download_url: str) -> None:
-        self.async_worker.add_task(self._download_wine_ge_version(version, download_url))
+        self.async_worker.add_task(self._download_wine_ge_releases(version, download_url))
 
     @Slot(str)
     def uninstallWine(self, version: str) -> None:
