@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from dataclasses import fields
 from dataclasses import astuple
 from dataclasses import asdict
+import logging
 
 
 """
@@ -45,6 +46,13 @@ WIN_VER_MAP = {
     "Windows 8.1": "win81",
     "Windows 10": "win10"
 }
+
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -177,6 +185,8 @@ class AppEngine(QObject):
         super().__init__()
         self.async_worker = AsyncWorker()
         QCoreApplication.instance().aboutToQuit.connect(self._on_about_to_quit)
+        # self.error.connect(self.onError)
+        # self.message.connect(self.onMessage)
         self.appDB = AppSettingsDB()
         self.saveSettingsSignal.connect(self.saveSettings)
         self._saveInstSettingsSignal.connect(self._save_inst_settings)
@@ -332,8 +342,6 @@ class AppEngine(QObject):
             self.deleteAppSignal.emit()
         except Exception as e:
             self.error.emit(e)
-            # tested
-            raise
 
     def _get_installed_apps(self) -> None:
         wine_apps_path = Path.home() / WINE_APPS_DIR
@@ -722,7 +730,15 @@ class AppEngine(QObject):
     def getWinePath(self, wine_version: str, win_bit: str) -> str:
         return str(self._get_wine_path(wine_version, win_bit))
 
+    @Slot(str)
+    def onError(self, err: str) -> None:
+        logger.error(err)
 
+    @Slot(str)
+    def onMessage(self, mess: str) -> None:
+        logger.info(mess)
+
+###
     @Slot()
     def test(self): pass
         # print(self.appDB.get_columns(["name", "exe_path"]))

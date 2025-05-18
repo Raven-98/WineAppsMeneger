@@ -747,14 +747,16 @@ ApplicationWindow {
     function log(text) {
         labelLog.color = "#000000";
         labelLog.text = text;
-        console.log(text)
+        // console.log(text)
+        AppEngine.onMessage(text)
         timerLabelLog.running = true;
     }
 
     function error(text) {
         labelLog.color = "#ff0000";
         labelLog.text = text;
-        console.log(text)
+        // console.log(text)
+        AppEngine.onError(text)
         timerLabelLog.running = true;
     }
 
