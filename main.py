@@ -33,7 +33,7 @@ import configparser
 
 
 APP_NAME = "WineAppsManager"
-APP_VERSION = "0.0.0-4"
+APP_VERSION = "0.0.0-5"
 APP_SETTINGS_DIR = ".wineappsmanager"
 WINE_APPS_DIR = APP_SETTINGS_DIR + "/wine-apps"
 WINE_VERSIONS_DIR = APP_SETTINGS_DIR + "/wine-versions"
