@@ -12,6 +12,10 @@ ApplicationWindow {
 
     // font.pixelSize: 12
 
+    onVisibleChanged: {
+        AppEngine.test()
+    }
+
     menuBar: MenuBar {
         id: menuBar
 
@@ -232,6 +236,7 @@ ApplicationWindow {
         MenuItem {
             text: qsTr("Configure")
             onTriggered: {
+                dialogConfig.appName = appsContextMenu.appName
                 dialogConfig.appSettings = AppEngine.getSettings(appsContextMenu.appName)
                 comboBoxWineVersion.model = AppEngine.getInstalledWines()
                 dialogConfig.visible = true
@@ -261,6 +266,7 @@ ApplicationWindow {
         modal: true
         standardButtons: Dialog.Ok | Dialog.Cancel
 
+        property string appName
         property var appSettings: {
             "name": "",
             "wine_prefix_path": "",
@@ -282,7 +288,7 @@ ApplicationWindow {
         }
 
         onAccepted: {
-            console.log(appSettings)
+            if (appSettings["name"] === "") appSettings["name"] = appName
             appSettings["wine_prefix_path"] = textFieldWinePrefix.text
             appSettings["exe_path"] = textFieldExecutable.text
             appSettings["wine_version"] = comboBoxWineVersion.currentText

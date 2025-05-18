@@ -31,7 +31,7 @@ from dataclasses import asdict
 
 
 APP_NAME = "WineAppsManager"
-APP_VERSION = "0.0.0-2"
+APP_VERSION = "0.0.0-3"
 APP_SETTINGS_DIR = ".wineappsmanager"
 WINE_APPS_DIR = APP_SETTINGS_DIR + "/wine-apps"
 WINE_VERSIONS_DIR = APP_SETTINGS_DIR + "/wine-versions"
@@ -49,14 +49,14 @@ WIN_VER_MAP = {
 
 @dataclass
 class AppData:
-    name: str
-    wine_prefix_path: str
-    wine_path: str
-    wine_version: str
-    wine_bit: str
-    exe_path: str
-    icon_path: str
-    settings_json: str
+    name: str = ''
+    wine_prefix_path: str = ''
+    wine_path: str = ''
+    wine_version: str = ''
+    wine_bit: str = ''
+    exe_path: str = ''
+    icon_path: str = ''
+    settings_json: str = ''
 
     @classmethod
     def from_dict(cls, data: dict):
@@ -138,6 +138,20 @@ class AppSettingsDB(QObject):
         row = cursor.fetchone()
         return AppData.from_dict(dict(row)) if row else None
 
+    def get_columns(self, columns: list) -> dict:
+        columns_str = ', '.join(columns)
+        cursor = self.conn.execute(f"SELECT id, {columns_str} FROM app_settings")
+        rows = cursor.fetchall()
+        # result = { column: [] for column in columns }
+        result = {}
+        for row in rows:
+            row_id = row[0]
+        #     for idx, column in enumerate(columns):
+        #         value = row[idx + 1]
+        #         result[column].append({row_id: value})
+            result[row_id] = {columns[i]: row[i + 1] for i in range(len(columns))}
+        return result
+
     def delete_settings(self, name: str) -> None:
         with self.conn:
             self.conn.execute('DELETE FROM app_settings WHERE name=?', (name,))
@@ -169,7 +183,7 @@ class AppEngine(QObject):
         self.deleteSettingsSignal.connect(self.deleteSettings)
         self.deleteAppSignal.connect(self.scanApplications)
 
-    # private
+# private
 
     @Slot()
     def _on_about_to_quit(self) -> None:
@@ -220,8 +234,14 @@ class AppEngine(QObject):
         if inst:
             if process and process.returncode == 0:
                 self.message.emit(f"{data['appName']} installed successfully.")
-                await asyncio.sleep(1)
-                exe_path = self._win_path_to_unix(self._get_exe_path(wine_prefix_path / "system.reg"), wine_prefix_path)
+                sys_reg_path = None
+                while_count = 0
+                while not sys_reg_path and while_count <= 25:
+                    sys_reg_path = self._get_exe_path(wine_prefix_path / "system.reg")
+                    if not sys_reg_path:
+                        while_count += 1
+                        await asyncio.sleep(1)
+                exe_path = self._win_path_to_unix(sys_reg_path, wine_prefix_path)
             else:
                 self.error.emit(f"Installer exited with code {process.returncode}.")
                 if os.path.exists(wine_prefix_path):
@@ -230,20 +250,16 @@ class AppEngine(QObject):
             self.message.emit(f"{data['appName']} added successfully.")
             exe_path = data['appExe']
 
-        # Шукаємо файл з іконкою
+        ## Шукаємо файл з іконкою
         # !!! Працює лише з програмами які були встановлені через системний wine !!!
         app_icon_file = None
-        app_exe = None
-        try:
-            app_exe = self._win_path_to_unix(self._get_exe_path(wine_prefix_path / "system.reg"), wine_prefix_path)
-        except Exception as e:
-            self.error.emit(e)
-        if app_exe:
-            app_name = app_exe.parts[-1].replace(".exe", "")
+        if exe_path:
+            app_name = exe_path.parts[-1].replace(".exe", "")
             icons_path = Path.home() / ".local/share/icons/hicolor/32x32/apps"
             app_icon_file = next(icons_path.glob(f"*{app_name}*"), None)
         if not app_icon_file:
             self.error.emit(f"Icon for {wine_prefix_path.stem} not found")
+        ##
 
         if exe_path:
             stt_data = {
@@ -269,27 +285,55 @@ class AppEngine(QObject):
             exe_dir = self._unix_path_to_win(exe_dir_ux, app_settings.wine_prefix_path).replace("\\", "\\\\")
             escaped_dir = re.escape(exe_dir)
             match = re.search(fr'"UninstallString"="\\*"?{escaped_dir}([^"]+)"', reg_data)
+            uninst_exe = None
             if match:
                 uninst_path = match.group(1)
                 uninst_path = uninst_path.split("\\")
-                uninst_exe = None
                 for i, part in enumerate(uninst_path):
                     if part.lower().endswith(".exe"):
                         uninst_exe = part
                         break
-                if uninst_exe:
-                    env = os.environ.copy()
-                    env["WINEPREFIX"] = str(app_settings.wine_prefix_path)
-                    command = [app_settings.wine_path, f"{exe_dir_ux}/{uninst_exe}"]
-                    process = subprocess.Popen(command, env=env)
-                    process.wait()
-            wine_prefix = app_settings.wine_prefix_path
-            shutil.rmtree(wine_prefix)
+            ## Видалення додаткових файлів що створює системний wine
+            app_exe = None
+            match = re.search(fr'"DisplayIcon"="\\*"?{escaped_dir}([^"]+)"', reg_data)
+            if match:
+                uninst_path = match.group(1)
+                uninst_path = uninst_path.split("\\")
+                for i, part in enumerate(uninst_path):
+                    if part.lower().endswith(".exe"):
+                        app_exe = part
+                        break
+            if app_exe:
+                app_name = app_exe.replace(".exe", "")
+                icons_base_path = Path.home() / ".local/share/icons/hicolor"
+                icons_path_lst = [folder for folder in os.listdir(icons_base_path) if os.path.isdir(os.path.join(icons_base_path, folder))]
+                for folder in icons_path_lst:
+                    icons_path = icons_base_path / folder / "apps"
+                    # app_icon_file = next(icons_path.glob(f"*{app_name}*"), None)
+                    app_icons_lst = list(icons_path.glob(f"*{app_name}*"))
+                    for app_icon_file in app_icons_lst:
+                        os.remove(app_icon_file)
+                        self.message.emit(f"Removed {app_icon_file}")
+                    if uninst_exe:
+                        uinst_icons_lst = list(icons_path.glob(f"*{uninst_exe.replace('.exe', '')}*"))
+                        for uninst_icon_file in uinst_icons_lst:
+                            os.remove(uninst_icon_file)
+                            self.message.emit(f"Removed {uninst_icon_file}")
+            ##
+            if uninst_exe:
+                env = os.environ.copy()
+                env["WINEPREFIX"] = str(app_settings.wine_prefix_path)
+                command = [app_settings.wine_path, f"{exe_dir_ux}/{uninst_exe}"]
+                process = subprocess.Popen(command, env=env)
+                process.wait()
+            shutil.rmtree(app_settings.wine_prefix_path)
             self.deleteSettingsSignal.emit(appName)
             self.message.emit(f"{appName} deleted")
             self.deleteAppSignal.emit()
         except Exception as e:
             self.error.emit(e)
+            # tested
+            raise
 
     def _get_installed_apps(self) -> None:
         wine_apps_path = Path.home() / WINE_APPS_DIR
@@ -308,10 +352,17 @@ class AppEngine(QObject):
             if app_dir.is_dir():
                 self.message.emit(f"Found {app_dir.stem}")
             app_data = self.appDB.get_settings(app_dir.stem)
-            installed_apps.append({'name': app_dir.stem, 'icon': app_data.icon_path})
+            installed_apps.append({'name': app_dir.stem, 'icon': app_data.icon_path if app_data else None })
             self.message.emit(f"{app_dir.stem} added to the list")
 
         return installed_apps
+
+    def _get_db_apps(self) -> None:
+        db_apps = self.appDB.get_columns(['name', 'icon_path'])
+        result = []
+        for key in db_apps.keys():
+            result.append({'name': db_apps[key]['name'], 'icon': db_apps[key]['icon_path']})
+        return result
 
     async def _get_wine_list(self) -> None:
         # versions = await self._get_wine_versions()
@@ -530,7 +581,6 @@ class AppEngine(QObject):
             self.error.emit(f"Failed to remove {version}: {str(e)}")
         self.wineStatusChanged.emit()
 
-# десь тут error затесався
     def _get_exe_path(self, system_reg_path: Path) -> str:
         try:
             with open(system_reg_path, "r", encoding="utf-8") as reg_file:
@@ -571,7 +621,7 @@ class AppEngine(QObject):
             wine_path = Path.home() / WINE_VERSIONS_DIR / wine_version / wine_bit
         return wine_path
 
-    # public
+# public
 
     @Slot(dict)
     def saveSettings(self, data: dict) -> None:
@@ -583,8 +633,8 @@ class AppEngine(QObject):
 
     @Slot(str, result=dict)
     def getSettings(self, name: str) -> dict:
-        return asdict(self.appDB.get_settings(name))
-
+        stt = self.appDB.get_settings(name)
+        return asdict(stt) if stt else asdict(AppData())
     @Slot()
     def scanApplications(self) -> None:
         try:
@@ -594,6 +644,12 @@ class AppEngine(QObject):
         except FileNotFoundError:
             self.error.emit("Wine is not installed or not found in the system PATH.")
             self.updateModelSignal.emit([])
+
+    @Slot()
+    def initScanApp(self) -> None:
+         installed_apps = self._get_db_apps()
+         self.updateModelSignal.emit(installed_apps)
+         self.message.emit("Scanning complete")
 
     @Slot(dict)
     def installApplication(self, data: dict) -> None:
@@ -667,11 +723,13 @@ class AppEngine(QObject):
         return str(self._get_wine_path(wine_version, win_bit))
 
 
-    # @Slot()
-    # def test(self):
-    #     wine_prefix_path = Path.home() / WINE_APPS_DIR / "YIIOTHome"
-    #     p = self._get_exe_path(wine_prefix_path / "system.reg")
-    #     print(self._win_path_to_unix(p, wine_prefix_path))
+    @Slot()
+    def test(self): pass
+        # print(self.appDB.get_columns(["name", "exe_path"]))
+        # print(self._get_db_apps())
+    #     wine_prefix = Path.home() / WINE_APPS_DIR / "cpu-z"
+    #     p = self._get_exe_path(wine_prefix / "system.reg")
+    #     print(self._win_path_to_unix(p, wine_prefix))
 
 
 if __name__ == "__main__":
@@ -691,6 +749,6 @@ if __name__ == "__main__":
     if not engine.rootObjects():
         sys.exit(-1)
 
-    appEngine.scanApplications()
+    appEngine.initScanApp()
 
     sys.exit(app.exec())
