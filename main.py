@@ -38,7 +38,7 @@ import configparser
 
 
 APP_NAME = "WineAppsManager"
-APP_VERSION = "0.0.0-6"
+APP_VERSION = "0.0.0-7"
 APP_SETTINGS_DIR = ".wineappsmanager"
 WINE_APPS_DIR = APP_SETTINGS_DIR + "/wine-apps"
 WINE_VERSIONS_DIR = APP_SETTINGS_DIR + "/wine-versions"
@@ -789,8 +789,14 @@ class AppEngine(QObject):
         if wine_version == self._find_system_wine():
             wine_path = "wine"
         elif wine_version in wine_lst:
-            wine_bit = "bin/wine" if "32 bit" in win_bit else "bin/wine64"
-            wine_path = Path.home() / WINE_VERSIONS_DIR / wine_version / wine_bit
+            wine_bit = "wine" if "32 bit" in win_bit else "wine64"
+            root_dir = Path.home() / WINE_VERSIONS_DIR / wine_version
+            for dirpath, _, filenames in os.walk(root_dir):
+                for filename in filenames:
+                    if filename in wine_bit:
+                        full_path = Path(dirpath) / filename
+                        if os.access(full_path, os.X_OK):
+                            wine_path = full_path
         return wine_path
 
 # public
@@ -864,6 +870,7 @@ class AppEngine(QObject):
             self.message.emit(f"Started process with PID: {process.pid}")
         except Exception as e:
             self.error.emit(e)
+            raise
 
     @Slot(str)
     def runWinecng(self, appName: str) -> None:
