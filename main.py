@@ -28,12 +28,17 @@ import configparser
 
 """
 Оскільки базовий wine потрібно компілювати що займає багато часу,
-для початку використаю wine-ge
+для початку використаю wine від GloriousEggroll
+
+Також є репозиторії від:
+    - Bottles [https://github.com/bottlesdevs/wine/releases]
+    - Kron4ek [https://github.com/Kron4ek/Wine-Builds/releases]
+Їх також вірто розглянути, оскільки GE версії орієнтовані на ігри
 """
 
 
 APP_NAME = "WineAppsManager"
-APP_VERSION = "0.0.0-5"
+APP_VERSION = "0.0.0-6"
 APP_SETTINGS_DIR = ".wineappsmanager"
 WINE_APPS_DIR = APP_SETTINGS_DIR + "/wine-apps"
 WINE_VERSIONS_DIR = APP_SETTINGS_DIR + "/wine-versions"
@@ -579,14 +584,45 @@ class AppEngine(QObject):
     async def _get_proton_ge_versions(self) -> dict:
         return await self._fetch_ge_releases(PROTON_GE_RELEASES_URL, "Proton")
 
+    # async def _fetch_ge_releases(self, url: str, v: str) -> dict:
+    #     async with aiohttp.ClientSession() as session:
+    #         async with session.get(url) as response:
+    #             if response.status == 200:
+    #                 installed_wines = self._get_installed_wines()
+    #                 releases = await response.json()
+    #                 # versions = {release['tag_name'] : release['assets'][0]['browser_download_url'] for release in releases}
+    #                 versions = {}
+    #                 for release in releases:
+    #                     version_name = f"{v} - {release['tag_name']}"
+    #                     download_url = None
+    #                     installed = version_name in installed_wines
+    #                     for asset in release['assets']:
+    #                         if asset['name'].endswith('.tar.xz') or asset['name'].endswith('.tar.gz'):
+    #                             download_url = asset['browser_download_url']
+    #                             break
+    #                     if not download_url:
+    #                         self.error.emit(f"No .tar.xz archive found in this release for {version_name}.")
+    #                         continue
+    #                     versions[version_name] = [download_url, installed]
+    #                 return versions
+    #             else:
+    #                 self.error.emit(f"Failed to retrieve releases: {response.status}")
+    #                 return {}
     async def _fetch_ge_releases(self, url: str, v: str) -> dict:
+        versions = {}
+        installed_wines = self._get_installed_wines()
+        page = 1
+        per_page = 100  # максимум для GitHub API
         async with aiohttp.ClientSession() as session:
-            async with session.get(url) as response:
-                if response.status == 200:
-                    installed_wines = self._get_installed_wines()
+            while True:
+                paged_url = f"{url}?per_page={per_page}&page={page}"
+                async with session.get(paged_url) as response:
+                    if response.status != 200:
+                        self.error.emit(f"Failed to retrieve releases: {response.status}")
+                        break
                     releases = await response.json()
-                    # versions = {release['tag_name'] : release['assets'][0]['browser_download_url'] for release in releases}
-                    versions = {}
+                    if not releases:
+                        break
                     for release in releases:
                         version_name = f"{v} - {release['tag_name']}"
                         download_url = None
@@ -596,13 +632,11 @@ class AppEngine(QObject):
                                 download_url = asset['browser_download_url']
                                 break
                         if not download_url:
-                            self.error.emit(f"No .tar.xz archive found in this release for {version_name}.")
+                            self.error.emit(f"No .tar.xz or .tar.gz archive found in this release for {version_name}.")
                             continue
                         versions[version_name] = [download_url, installed]
-                    return versions
-                else:
-                    self.error.emit(f"Failed to retrieve releases: {response.status}")
-                    return {}
+                    page += 1
+        return versions
 
     async def _download_wine_ge_releases(self, version: str, download_url: str) -> None:
         self.message.emit(f"Downloading Wine GE version {version}...")
