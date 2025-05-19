@@ -870,7 +870,6 @@ class AppEngine(QObject):
             self.message.emit(f"Started process with PID: {process.pid}")
         except Exception as e:
             self.error.emit(e)
-            raise
 
     @Slot(str)
     def runWinecng(self, appName: str) -> None:

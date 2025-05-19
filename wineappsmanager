@@ -2,8 +2,18 @@
 
 INSTALL_DIR="$HOME/.wineappsmanager"
 VENV_DIR="$INSTALL_DIR/venv"
-PYTHON="$VENV_DIR/bin/python"
+MAIN_SCRIPT="$INSTALL_DIR/main.py"
 
+if [ ! -d "$VENV_DIR" ]; then
+    echo "Virtual environment not found at $VENV_DIR"
+    echo "Please run the install script first."
+    exit 1
+fi
+
+if [ ! -f "$MAIN_SCRIPT" ]; then
+    echo "Main script not found at $MAIN_SCRIPT"
+    exit 1
+fi
 
 source "$VENV_DIR/bin/activate"
-python "$INSTALL_DIR/main.py"
+exec python "$MAIN_SCRIPT"
