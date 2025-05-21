@@ -69,7 +69,7 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-4. Зібрати *rc_resources.py* (необхідно після кожної зміни qml-файлів та файлів зображень):
+4. Зібрати `rc_resources.py` (необхідно після кожної зміни qml-файлів та файлів зображень):
 
 ```bash
  pyside6-rcc resources.qrc -o rc_resources.py 
