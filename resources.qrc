@@ -1,0 +1,36 @@
+<RCC>
+    <qresource prefix="/">
+        <file>qml/main.qml</file>
+        <file>qml/ErrorDialog.qml</file>
+        <file>qml/DialogManageWine.qml</file>
+        <file>qml/DialogConfig.qml</file>
+        <file>qml/DialogInstallingAdding.qml</file>
+        <file>qml/Modules/qmldir</file>
+        <file>qml/Modules/Colors.qml</file>
+        <file>qml/Modules/DialogButtons.qml</file>
+        <file>qml/Modules/helper.js</file>
+        <file>qml/Modules/FontMetrics.qml</file>
+        <file>qml/Controls/qmldir</file>
+        <file>qml/Controls/MenuBar.qml</file>
+        <file>qml/Controls/Menu.qml</file>
+        <file>qml/Controls/MenuItem.qml</file>
+        <file>qml/Controls/ImageButton.qml</file>
+        <file>qml/Controls/WindowDialog.qml</file>
+        <file>qml/Controls/Label.qml</file>
+        <file>qml/Controls/Button.qml</file>
+        <file>qml/Controls/TextField.qml</file>
+        <file>qml/Controls/ComboBox.qml</file>
+        <file>qml/Controls/ScrollBar.qml</file>
+        <file>qml/Controls/TabButton.qml</file>
+        <file>img/icon.png</file>
+        <file>img/install-64.png</file>
+        <file>img/add-64.png</file>
+        <file>img/exit-64.png</file>
+        <file>img/play-64.png</file>
+        <file>img/settings-64.png</file>
+        <file>img/menu-64.png</file>
+        <file>img/file-64.png</file>
+        <file>img/open-folder-64.png</file>
+        <file>img/error-64.png</file>
+    </qresource>
+</RCC>

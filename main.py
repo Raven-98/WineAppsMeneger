@@ -9,6 +9,7 @@ import tarfile
 import shutil
 import sqlite3
 from PySide6.QtGui import QGuiApplication
+# from PySide6.QtWidgets import QApplication
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtCore import QObject
 from PySide6.QtCore import Signal, Slot
@@ -34,11 +35,12 @@ import configparser
     - Bottles [https://github.com/bottlesdevs/wine/releases]
     - Kron4ek [https://github.com/Kron4ek/Wine-Builds/releases]
 Їх також вірто розглянути, оскільки GE версії орієнтовані на ігри
+
+Ще є репозиторій https://github.com/mmtrt/WINE_AppImage
 """
 
 
 APP_NAME = "WineAppsManager"
-APP_VERSION = "0.0.0-7"
 APP_SETTINGS_DIR = ".wineappsmanager"
 WINE_APPS_DIR = APP_SETTINGS_DIR + "/wine-apps"
 WINE_VERSIONS_DIR = APP_SETTINGS_DIR + "/wine-versions"
@@ -203,7 +205,7 @@ class AppEngine(QObject):
         self.deleteSettingsSignal.connect(self.deleteSettings)
         self.deleteAppSignal.connect(self.scanApplications)
 
-# private
+## private
 
     @Slot()
     def _on_about_to_quit(self) -> None:
@@ -479,11 +481,14 @@ class AppEngine(QObject):
         return result
 
     async def _get_wine_list(self) -> None:
+        '''
+            Елемент має структуру: '{тип wine} - {версія wine}': ['{url для завантаження}', '{чи інстальовано}']
+        '''
         # versions = await self._get_wine_versions()
         versions = {}
         sys_wine = self._find_system_wine()
         if sys_wine:
-            versions[sys_wine] = ["system", True]
+            versions[f"system - {sys_wine}"] = ["", True]
         # versions = await self._get_wine_ge_versions()
         versions.update(await self._get_wine_ge_versions())
         versions.update(await self._get_proton_ge_versions())
@@ -579,10 +584,10 @@ class AppEngine(QObject):
 ###
 
     async def _get_wine_ge_versions(self) -> dict:
-        return await self._fetch_ge_releases(WINE_GE_RELEASES_URL, "Wine")
+        return await self._fetch_ge_releases(WINE_GE_RELEASES_URL, "Wine-GE")
 
     async def _get_proton_ge_versions(self) -> dict:
-        return await self._fetch_ge_releases(PROTON_GE_RELEASES_URL, "Proton")
+        return await self._fetch_ge_releases(PROTON_GE_RELEASES_URL, "Proton-GE")
 
     # async def _fetch_ge_releases(self, url: str, v: str) -> dict:
     #     async with aiohttp.ClientSession() as session:
@@ -608,7 +613,7 @@ class AppEngine(QObject):
     #             else:
     #                 self.error.emit(f"Failed to retrieve releases: {response.status}")
     #                 return {}
-    async def _fetch_ge_releases(self, url: str, v: str) -> dict:
+    async def _fetch_ge_releases(self, url: str, tp: str) -> dict:
         versions = {}
         installed_wines = self._get_installed_wines()
         page = 1
@@ -624,7 +629,7 @@ class AppEngine(QObject):
                     if not releases:
                         break
                     for release in releases:
-                        version_name = f"{v} - {release['tag_name']}"
+                        version_name = f"{tp} - {release['tag_name']}"
                         download_url = None
                         installed = version_name in installed_wines
                         for asset in release['assets']:
@@ -737,7 +742,7 @@ class AppEngine(QObject):
 
     async def _uninstall_wine(self, version: str) -> None:
         wine_path = Path.home() / WINE_VERSIONS_DIR / version
-        archive_path = Path.home() / WINE_VERSIONS_DIR / f"{version}.tar.xz"
+        archive_path = next((Path.home() / WINE_VERSIONS_DIR).glob(f"{version}.tar.*"), None)
         try:
             if wine_path.exists():
                 shutil.rmtree(wine_path)
@@ -799,7 +804,7 @@ class AppEngine(QObject):
                             wine_path = full_path
         return wine_path
 
-# public
+## public
 
     @Slot(dict)
     def saveSettings(self, data: dict) -> None:
@@ -909,30 +914,41 @@ class AppEngine(QObject):
         logger.info(mess)
 
 ###
-    @Slot()
-    def test(self): pass
-        # print(self.appDB.get_columns(["name", "exe_path"]))
-        # print(self._get_db_apps())
-        # wine_prefix = Path.home() / WINE_APPS_DIR / "cpu-z"
-        # self.async_worker.add_task(self._parse_user_reg(wine_prefix))
-    #     p = self._get_sys_reg_exe_path(wine_prefix / "system.reg")
-    #     print(self._win_path_to_unix(p, wine_prefix))
+    # @Slot()
+    # def test(self): pass
+    #     # print(self.appDB.get_columns(["name", "exe_path"]))
+    #     # print(self._get_db_apps())
+    #     # wine_prefix = Path.home() / WINE_APPS_DIR / "cpu-z"
+    #     # self.async_worker.add_task(self._parse_user_reg(wine_prefix))
+    # #     p = self._get_sys_reg_exe_path(wine_prefix / "system.reg")
+    # #     print(self._win_path_to_unix(p, wine_prefix))
+    # @Slot(result=dict)
+    # def testGetWines(self):
+    #     from test_const import wines
+    #     self.getedWineList.emit(wines)
+
 
 
 if __name__ == "__main__":
+    import rc_resources
+
+    APP_VERSION = (Path(__file__).parent / "VERSION").read_text().strip()
+
     app = QGuiApplication(sys.argv)
+    # app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setApplicationVersion(APP_VERSION)
-    app.setWindowIcon(QIcon("icon.png"))
+    app.setWindowIcon(QIcon(":/img/icon.png"))
 
     engine = QQmlApplicationEngine()
-    qml_file = Path(__file__).resolve().parent / "main.qml"
 
     appEngine = AppEngine()
     engine.rootContext().setContextProperty("qApp", app)
     engine.rootContext().setContextProperty("AppEngine", appEngine)
 
-    engine.load(qml_file)
+    engine.addImportPath("qrc:/qml")
+
+    engine.load("qrc:/qml/main.qml")
     if not engine.rootObjects():
         sys.exit(-1)
 

@@ -1,0 +1,5 @@
+module Modules
+singleton Colors 1.0 Colors.qml
+singleton DialogButtons 1.0 DialogButtons.qml
+Helper 1.0 helper.js
+FontMetrics 1.0 FontMetrics.qml
