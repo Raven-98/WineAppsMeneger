@@ -10,6 +10,7 @@ Window {
     modality: Qt.WindowModal
 
     default property alias content: content.children
+    property alias customButtons: buttonsLeft.children
     property alias states: content.states
     property alias state: content.state
     property int standardButtons: DialogButtons.ok
@@ -29,8 +30,8 @@ Window {
 
     onVisibleChanged: {
         if (visible) {
-            minimumWidth = Math.max(content.implicitWidth, buttonsRight.implicitWidth) + 20
-            minimumHeight = content.implicitHeight + buttonsRight.implicitHeight + 10
+            minimumWidth = Math.max(content.implicitWidth, buttons.implicitWidth) + 20
+            minimumHeight = content.implicitHeight + buttons.implicitHeight + 10
             opened()
         }
     }
@@ -48,29 +49,46 @@ Window {
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.bottom: buttonsRight.top
+        anchors.bottom: buttons.top
         implicitHeight: children.length === 1 ? children[0].implicitHeight : (children.length ? childrenRect.height : 0)
         implicitWidth: children.length === 1 ? children[0].implicitWidth : (children.length ? childrenRect.width : 0)
     }
 
-    Flow {
-        id: buttonsRight
-        anchors.right: parent.right
+    Item {
+        id: buttons
+        anchors.left: parent.left
         anchors.bottom: parent.bottom
-        spacing: 6
-        padding: 10
+        anchors.right: parent.right
+        implicitHeight: Math.max(buttonsLeft.implicitHeight, buttonsRight.implicitHeight)
+        implicitWidth: buttonsLeft.implicitWidth + 6 + buttonsRight.implicitWidth
 
-        Button {
-            text: "Ok"
-            visible: root.standardButtons === DialogButtons.ok ||
-                        root.standardButtons === (DialogButtons.ok | DialogButtons.cancel)
-            onClicked: root.accept()
+        Flow {
+            id: buttonsLeft
+            anchors.left: parent.left
+            anchors.bottom: parent.bottom
+            spacing: 6
+            padding: 10
         }
-        Button {
-            text: qsTr("Cancel")
-            visible: root.standardButtons === DialogButtons.cancel ||
-                        root.standardButtons === (DialogButtons.ok | DialogButtons.cancel)
-            onClicked: root.reject()
+
+        Flow {
+            id: buttonsRight
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            spacing: 6
+            padding: 10
+
+            Button {
+                text: "Ok"
+                visible: root.standardButtons === DialogButtons.ok ||
+                            root.standardButtons === (DialogButtons.ok | DialogButtons.cancel)
+                onClicked: root.accept()
+            }
+            Button {
+                text: qsTr("Cancel")
+                visible: root.standardButtons === DialogButtons.cancel ||
+                            root.standardButtons === (DialogButtons.ok | DialogButtons.cancel)
+                onClicked: root.reject()
+            }
         }
     }
 }

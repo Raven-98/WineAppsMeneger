@@ -25,6 +25,8 @@ from dataclasses import astuple
 from dataclasses import asdict
 import logging
 import configparser
+import json
+import time
 
 
 """
@@ -44,6 +46,9 @@ APP_NAME = "WineAppsManager"
 APP_SETTINGS_DIR = ".wineappsmanager"
 WINE_APPS_DIR = APP_SETTINGS_DIR + "/wine-apps"
 WINE_VERSIONS_DIR = APP_SETTINGS_DIR + "/wine-versions"
+APPS_CONFIGURE = APP_SETTINGS_DIR + "/apps_configure.db"
+WINE_VERSIONS_CACHE = APP_SETTINGS_DIR + "/wine_releases_cache.json"
+WINE_CACHE_LIVE = 600 # 10 хвилин
 # WINE_SOURCE_URL = "https://dl.winehq.org/wine/source/"
 # WINE_DIST_URL = "https://dl.winehq.org/wine-builds/ubuntu/dists/"
 WINE_GE_RELEASES_URL = "https://api.github.com/repos/GloriousEggroll/wine-ge-custom/releases"
@@ -110,7 +115,7 @@ class AsyncWorker(QObject):
 class AppSettingsDB(QObject):
     def __init__(self, db_path=None):
         if db_path is None:
-            db_path = Path.home() / APP_SETTINGS_DIR / "settings.db"
+            db_path = Path.home() / APPS_CONFIGURE
         else:
             db_path = Path(db_path)
         db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -278,7 +283,7 @@ class AppEngine(QObject):
         except Exception as e:
             self.error.emit(f"Failed to set Wine version in registry: {e}")
 
-    async def _run_installer(self, wine_prefix_path: Path, wine_path: Path, app_exe: str, env: dict, app_name: str) -> Path | None:
+    async def _run_installer(self, wine_prefix_path: Path, wine_path: Path, app_exe: str, env: dict, app_name: str) -> Path:
         process = None
         try:
             process = subprocess.Popen(
@@ -348,7 +353,7 @@ class AppEngine(QObject):
 
         return menu_entries
 
-    def _find_app_icon(self, wine_prefix_path: Path, desktop_list: list) -> Path | None:
+    def _find_app_icon(self, wine_prefix_path: Path, desktop_list: list) -> Path:
         for desktop in desktop_list:
             if "proton_shortcuts" in desktop and not str(wine_prefix_path) in desktop:
                 desktop_data = self._parse_desktop_file(f"{wine_prefix_path}/drive_c{desktop}")
@@ -451,7 +456,7 @@ class AppEngine(QObject):
         except Exception as e:
             self.error.emit(e)
 
-    def _get_installed_apps(self) -> None:
+    def _get_installed_apps(self) -> list:
         wine_apps_path = Path.home() / WINE_APPS_DIR
 
         if not wine_apps_path.is_dir():
@@ -473,7 +478,7 @@ class AppEngine(QObject):
 
         return installed_apps
 
-    def _get_db_apps(self) -> None:
+    def _get_db_apps(self) -> list:
         db_apps = self.appDB.get_columns(['name', 'icon_path'])
         result = []
         for key in db_apps.keys():
@@ -484,6 +489,18 @@ class AppEngine(QObject):
         '''
             Елемент має структуру: '{тип wine} - {версія wine}': ['{url для завантаження}', '{чи інстальовано}']
         '''
+        versions = self._load_cached_wine_list()
+        if versions is None:
+            versions = await self._get_origin_wine_list()
+            self._save_cached_wine_list(versions)
+        self.getedWineList.emit(versions)
+
+    async def _update_wine_list(self) -> None:
+        versions = await self._get_origin_wine_list()
+        self._save_cached_wine_list(versions)
+        self.getedWineList.emit(versions)
+
+    async def _get_origin_wine_list(self) -> dict:
         # versions = await self._get_wine_versions()
         versions = {}
         sys_wine = self._find_system_wine()
@@ -492,7 +509,36 @@ class AppEngine(QObject):
         # versions = await self._get_wine_ge_versions()
         versions.update(await self._get_wine_ge_versions())
         versions.update(await self._get_proton_ge_versions())
-        self.getedWineList.emit(versions)
+        return versions
+
+    def _save_cached_wine_list(self, wine_list: dict) -> None:
+        self.message.emit("Saving cached data")
+        cache_file = Path.home() / WINE_VERSIONS_CACHE
+        try:
+            with open(cache_file, "w", encoding="utf-8") as f:
+                json.dump(wine_list, f, indent=2)
+            self.message.emit(f"Wine list cached at {cache_file}")
+        except Exception as e:
+            self.error.emit(f"Failed to cache wine list: {str(e)}")
+
+    def _load_cached_wine_list(self) -> dict:
+        self.message.emit("Loading cached data")
+        cache_file = Path.home() / WINE_VERSIONS_CACHE
+        if not cache_file.exists():
+            self.message.emit("No cached wine list found.")
+            return None
+        cache_age = time.time() - cache_file.stat().st_mtime
+        max_cache_age = WINE_CACHE_LIVE
+        if cache_age > max_cache_age:
+            self.message.emit("Cached data is expired.")
+            return None
+        try:
+            with open(cache_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return data
+        except Exception as e:
+            self.error.emit(f"Failed to load cached wine list: {str(e)}")
+            return None
 
     def _find_system_wine(self) -> str:
         wine_path = shutil.which("wine")
@@ -859,6 +905,10 @@ class AppEngine(QObject):
     def getWineList(self) -> None:
         # asyncio.run(self._get_wine_list())   # Маю провисання виводу діалога
         self.async_worker.add_task(self._get_wine_list())
+
+    @Slot()
+    def updateWineList(self) -> None:
+        self.async_worker.add_task(self._update_wine_list())
 
     @Slot(result=list)
     def getInstalledWines(self) -> list:

@@ -62,6 +62,18 @@ WindowDialog {
         root.loading = false
     }
 
+    customButtons: [
+        Button {
+            id: buttonUpdateWinesList
+            text: qsTr("Update Wines list")
+            enabled: !root.loading
+            onClicked: {
+                root.loading = true
+                AppEngine.updateWineList()
+            }
+        }
+    ]
+
     content: Item {
         anchors.fill: parent
         anchors.margins: 10
