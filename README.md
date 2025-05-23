@@ -20,6 +20,7 @@
 
 - [Proton-GE](https://github.com/GloriousEggroll/proton-ge-custom) від GloriousEggroll
 - [Wine-GE](https://github.com/GloriousEggroll/wine-ge-custom) від GloriousEggroll
+- [Bottles](https://github.com/bottlesdevs/wine) збірки
 
 **Усі заслуги за ці збірки належать їхнім авторам. Цей проєкт не поширює та не змінює ці збірки.**
 
