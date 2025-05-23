@@ -18,7 +18,6 @@ from PySide6.QtGui import QIcon
 from pathlib import Path
 from queue import Queue
 from threading import Thread
-# from bs4 import BeautifulSoup
 from dataclasses import dataclass
 from dataclasses import fields
 from dataclasses import astuple
@@ -49,10 +48,9 @@ WINE_VERSIONS_DIR = APP_SETTINGS_DIR + "/wine-versions"
 APPS_CONFIGURE = APP_SETTINGS_DIR + "/apps_configure.db"
 WINE_VERSIONS_CACHE = APP_SETTINGS_DIR + "/wine_releases_cache.json"
 WINE_CACHE_LIVE = 600 # 10 хвилин
-# WINE_SOURCE_URL = "https://dl.winehq.org/wine/source/"
-# WINE_DIST_URL = "https://dl.winehq.org/wine-builds/ubuntu/dists/"
 WINE_GE_RELEASES_URL = "https://api.github.com/repos/GloriousEggroll/wine-ge-custom/releases"
 PROTON_GE_RELEASES_URL = "https://api.github.com/repos/GloriousEggroll/proton-ge-custom/releases"
+BOTTLES_RELEASES_URL = "https://api.github.com/repos/bottlesdevs/wine/releases"
 WIN_VER_MAP = {
     "Windows XP": "winxp",
     "Windows 7": "win7",
@@ -487,7 +485,7 @@ class AppEngine(QObject):
 
     async def _get_wine_list(self) -> None:
         '''
-            Елемент має структуру: '{тип wine} - {версія wine}': ['{url для завантаження}', '{чи інстальовано}']
+            Елемент має структуру: '{тип wine} - {версія wine}': ['{url для завантаження}', '{чи інстальовано}', "{published_at}"]
         '''
         versions = self._load_cached_wine_list()
         if versions is None:
@@ -505,10 +503,11 @@ class AppEngine(QObject):
         versions = {}
         sys_wine = self._find_system_wine()
         if sys_wine:
-            versions[f"system - {sys_wine}"] = ["", True]
+            versions[f"system - {sys_wine}"] = ["", True, ""]
         # versions = await self._get_wine_ge_versions()
         versions.update(await self._get_wine_ge_versions())
         versions.update(await self._get_proton_ge_versions())
+        versions.update(await self._get_bottles_versions())
         return versions
 
     def _save_cached_wine_list(self, wine_list: dict) -> None:
@@ -557,109 +556,16 @@ class AppEngine(QObject):
             self.error.emit("System Wine not found in PATH.")
         return None
 
-### Потрібна компіляція, що максимально не зручно
-    # async def _fetch_url(self, session, url):
-    #     async with session.get(url) as response:
-    #         response.raise_for_status()
-    #         return await response.text()
-
-    # async def _get_wine_versions(self):
-    #     async with aiohttp.ClientSession() as session:
-    #         main_page = await self._fetch_url(session, WINE_SOURCE_URL)
-    #         soup = BeautifulSoup(main_page, "lxml")
-
-    #         # Отримання підкаталогів версій
-    #         version_dirs = [a['href'] for a in soup.find_all('a', href=True) if re.match(r'\d+\.\d+/', a['href'])]
-
-    #         tasks = []
-    #         for version_dir in version_dirs:
-    #             sub_url = WINE_SOURCE_URL + version_dir
-    #             tasks.append(self._fetch_url(session, sub_url))
-
-    #         sub_pages = await asyncio.gather(*tasks)
-
-    #         all_versions = []
-    #         for sub_page in sub_pages:
-    #             sub_soup = BeautifulSoup(sub_page, "lxml")
-    #             versions = [
-    #                 a['href'] for a in sub_soup.find_all('a', href=True)
-    #                 if re.match(r'wine-\d+\.\d+(\.\d+)?\.tar\.xz', a['href'])
-    #             ]
-    #             all_versions.extend([v.replace('.tar.xz', '') for v in versions])
-
-    #         versions = [v for v in sorted(set(all_versions), reverse=True) if not v.endswith('.sign')]
-    #         return versions
-###
-
-### Покищо залишимо без реалізації оскільки потрібно додатково доукомплектовувати збірки
-
-    # async def _get_wine_versions(self):
-    #     async with aiohttp.ClientSession() as session:
-    #         async with session.get(WINE_DIST_URL) as response:
-    #             if response.status == 200:
-    #                 html = await response.text()
-    #                 soup = BeautifulSoup(html, 'html.parser')
-    #                 # dists = [a['href'] for a in soup.find_all('a', href=True) if a['href'].endswith('/') and a['href'].count('/') == 1]
-    #                 dists = list(set(
-    #                     a['href'] for a in soup.find_all('a', href=True)
-    #                     if a['href'].endswith('/') and a['href'].count('/') == 1
-    #                 ))
-    #                 for dist in dists:
-    #                     dist_url = WINE_DIST_URL + dist
-    #                     await self.check_for_stable_wine(session, dist_url)
-    #             else:
-    #                 self.error.emit(f"Failed to retrieve the list of distributions: {response.status}")
-
-    # async def check_for_stable_wine(self, session, dist_url):
-    #     # print(session, dist_url)
-    #     binary_url = dist_url + "main/binary-amd64/"
-    #     async with session.get(binary_url) as response:
-    #         if response.status == 200:
-    #             html = await response.text()
-    #             soup = BeautifulSoup(html, 'html.parser')
-
-    #             # wine_files = [a['href'] for a in soup.find_all('a', href=True) if 'wine-stable' in a['href']]
-    #             wine_files = list(set([a['href'] for a in soup.find_all('a', href=True) if 'wine-stable-amd64' in a['href']]))
-
-    #             if wine_files:
-    #                 print(f"Found stable Wine packages in {dist_url}:")
-    #                 for wine_file in wine_files:
-    #                     print(f"  {binary_url}{wine_file}")
-    #         else:
-    #             self.error.emit(f"Failed to retrieve the binary list for {dist_url}: {response.status}")
-###
-
     async def _get_wine_ge_versions(self) -> dict:
-        return await self._fetch_ge_releases(WINE_GE_RELEASES_URL, "Wine-GE")
+        return await self._fetch_github_releases(WINE_GE_RELEASES_URL, "Wine-GE")
 
     async def _get_proton_ge_versions(self) -> dict:
-        return await self._fetch_ge_releases(PROTON_GE_RELEASES_URL, "Proton-GE")
+        return await self._fetch_github_releases(PROTON_GE_RELEASES_URL, "Proton-GE")
 
-    # async def _fetch_ge_releases(self, url: str, v: str) -> dict:
-    #     async with aiohttp.ClientSession() as session:
-    #         async with session.get(url) as response:
-    #             if response.status == 200:
-    #                 installed_wines = self._get_installed_wines()
-    #                 releases = await response.json()
-    #                 # versions = {release['tag_name'] : release['assets'][0]['browser_download_url'] for release in releases}
-    #                 versions = {}
-    #                 for release in releases:
-    #                     version_name = f"{v} - {release['tag_name']}"
-    #                     download_url = None
-    #                     installed = version_name in installed_wines
-    #                     for asset in release['assets']:
-    #                         if asset['name'].endswith('.tar.xz') or asset['name'].endswith('.tar.gz'):
-    #                             download_url = asset['browser_download_url']
-    #                             break
-    #                     if not download_url:
-    #                         self.error.emit(f"No .tar.xz archive found in this release for {version_name}.")
-    #                         continue
-    #                     versions[version_name] = [download_url, installed]
-    #                 return versions
-    #             else:
-    #                 self.error.emit(f"Failed to retrieve releases: {response.status}")
-    #                 return {}
-    async def _fetch_ge_releases(self, url: str, tp: str) -> dict:
+    async def _get_bottles_versions(self) -> dict:
+        return await self._fetch_github_releases(BOTTLES_RELEASES_URL, "Bottles")
+
+    async def _fetch_github_releases(self, url: str, tp: str) -> dict:
         versions = {}
         installed_wines = self._get_installed_wines()
         page = 1
@@ -677,7 +583,6 @@ class AppEngine(QObject):
                     for release in releases:
                         version_name = f"{tp} - {release['tag_name']}"
                         download_url = None
-                        installed = version_name in installed_wines
                         for asset in release['assets']:
                             if asset['name'].endswith('.tar.xz') or asset['name'].endswith('.tar.gz'):
                                 download_url = asset['browser_download_url']
@@ -685,11 +590,16 @@ class AppEngine(QObject):
                         if not download_url:
                             self.error.emit(f"No .tar.xz or .tar.gz archive found in this release for {version_name}.")
                             continue
-                        versions[version_name] = [download_url, installed]
+                        installed = version_name in installed_wines
+                        published_at = release["published_at"]
+                        versions[version_name] = [download_url, installed, published_at]
                     page += 1
         return versions
 
-    async def _download_wine_ge_releases(self, version: str, download_url: str) -> None:
+    async def _install_wine(self, version: str, download_url: str) -> None:
+        await self._download_github_releases(version, download_url)
+
+    async def _download_github_releases(self, version: str, download_url: str) -> None:
         self.message.emit(f"Downloading Wine GE version {version}...")
         tar_type = download_url.split('/')[-1].split('.')[-1]
         save_path = Path.home() / WINE_VERSIONS_DIR / f"{version}.tar.{tar_type}"
@@ -781,8 +691,8 @@ class AppEngine(QObject):
         self.message.emit("Search for installed wines...")
         for wine_dir in wine_versions_path.iterdir():
             if wine_dir.is_dir():
-                self.message.emit(f"Found {wine_dir.stem}")
-                installed_wines.append(wine_dir.stem)
+                self.message.emit(f"Found {wine_dir.name}")
+                installed_wines.append(wine_dir.name)
         self.message.emit("Scanning complete")
         return installed_wines
 
@@ -895,7 +805,7 @@ class AppEngine(QObject):
 
     @Slot(str, str)
     def installWine(self, version: str, download_url: str) -> None:
-        self.async_worker.add_task(self._download_wine_ge_releases(version, download_url))
+        self.async_worker.add_task(self._install_wine(version, download_url))
 
     @Slot(str)
     def uninstallWine(self, version: str) -> None:

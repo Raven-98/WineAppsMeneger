@@ -18,13 +18,15 @@ WindowDialog {
     onWineMapChanged: {
         let wineList = Object.keys(wineMap).sort()
         wineList.sort((a, b) => {
-                          let installedA = wineMap[a][1]
-                          let installedB = wineMap[b][1]
-                          if (installedA === installedB) {
-                              return b.localeCompare(a)
-                          }
-                          return installedA ? -1 : 1
-                      })
+            let installedA = wineMap[a][1];
+            let installedB = wineMap[b][1];
+            if (installedA === installedB) {
+                let dateA = new Date(wineMap[a][2]);
+                let dateB = new Date(wineMap[b][2]);
+                return dateB - dateA;
+            }
+            return installedA ? -1 : 1;
+        });
 
         let tabsList = ["Installed"]
         if (!tabsData) tabsData = {}
