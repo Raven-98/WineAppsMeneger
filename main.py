@@ -248,11 +248,14 @@ class AppEngine(QObject):
             self.message.emit(f"{data['appName']} added successfully.")
             exe_path = data['appExe']
 
+        app_icon_file = None
         usr_app_data = await self._parse_user_reg(wine_prefix_path)
-        for file in usr_app_data["menu_list"]:
-            os.remove(file)
 
-        app_icon_file = self._find_app_icon(wine_prefix_path, usr_app_data["desktop_list"])
+        if usr_app_data:
+            for file in usr_app_data["menu_list"]:
+                os.remove(file)
+
+            app_icon_file = self._find_app_icon(wine_prefix_path, usr_app_data["desktop_list"])
 
         if exe_path:
             stt_data = {
@@ -264,7 +267,7 @@ class AppEngine(QObject):
                 "exe_path" : str(exe_path),
                 "icon_path" : str(app_icon_file) if app_icon_file else None,
                 "settings_json" :  None,
-                "desktop_list": "|".join(usr_app_data["desktop_list"])
+                "desktop_list": "|".join(usr_app_data["desktop_list"]) if usr_app_data else ""
             }
             self._saveInstSettingsSignal.emit(stt_data)
 
