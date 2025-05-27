@@ -35,9 +35,18 @@ WindowDialog {
             let wineVerIdx = comboBoxWineVersion.find(appSettings["wine_version"])
             if (wineVerIdx !== -1)
                 comboBoxWineVersion.currentIndex = wineVerIdx
-            let winePrArc = comboBoxPrefixArchitecture.find(appSettings["wine_bit"])
-            if (winePrArc !== -1)
-                comboBoxPrefixArchitecture.currentIndex = winePrArc
+            // let winePrArc = comboBoxPrefixArchitecture.find(appSettings["wine_bit"])
+            // if (winePrArc !== -1)
+            //     comboBoxPrefixArchitecture.currentIndex = winePrArc
+
+            if (appSettings["settings_json"]) {
+                let settings_json = JSON.parse(appSettings["settings_json"])
+                if ("env" in settings_json)
+                    textFieldEnv.text = settings_json.env
+            }
+            else {
+                textFieldEnv.text = ""
+            }
         }
     }
     onAccepted: {
@@ -45,9 +54,11 @@ WindowDialog {
         appSettings["wine_prefix_path"] = textFieldWinePrefix.text
         appSettings["exe_path"] = textFieldExecutable.text
         appSettings["wine_version"] = comboBoxWineVersion.currentText
-        appSettings["wine_bit"] = comboBoxPrefixArchitecture.currentText
+        // appSettings["wine_bit"] = comboBoxPrefixArchitecture.currentText
         appSettings["wine_path"] = AppEngine.getWinePath(appSettings["wine_version"], appSettings["wine_bit"])
         appSettings["icon_path"] = textFieldIcon.text
+        let settings_json = { env: textFieldEnv.text }
+        appSettings["settings_json"] = JSON.stringify(settings_json)
         AppEngine.saveSettings(appSettings)
     }
 
@@ -128,12 +139,19 @@ WindowDialog {
             Layout.columnSpan: 2
         }
 
-        Label { text: qsTr("Prefix architecture") }
-        ComboBox {
-            id: comboBoxPrefixArchitecture
+        // Label { text: qsTr("Prefix architecture") }
+        // ComboBox {
+        //     id: comboBoxPrefixArchitecture
+        //     Layout.fillWidth: true
+        //     Layout.columnSpan: 2
+        //     model: ["32 bit", "64 bit"]
+        // }
+
+        Label { text: qsTr("Environment variables") }
+        TextField {
+            id: textFieldEnv
             Layout.fillWidth: true
             Layout.columnSpan: 2
-            model: ["32 bit", "64 bit"]
         }
     }
 }
