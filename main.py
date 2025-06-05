@@ -33,7 +33,6 @@ import time
 для початку використаю wine від GloriousEggroll
 
 Також є репозиторії від:
-    - Bottles [https://github.com/bottlesdevs/wine/releases]
     - Kron4ek [https://github.com/Kron4ek/Wine-Builds/releases]
 Їх також вірто розглянути, оскільки GE версії орієнтовані на ігри
 
@@ -845,6 +844,10 @@ class AppEngine(QObject):
                                 env[key] = val
                 except Exception as e:
                     self.error.emit(f"Failed to parse settings_json: {e}")
+            if app_settings.wine_version.split(' - ')[0] == "Proton-GE":
+                pass
+            else:
+                pass
             command = [app_settings.wine_path, app_settings.exe_path]
             process = subprocess.Popen(command, env=env)
             self.message.emit(f"Started process with PID: {process.pid}")

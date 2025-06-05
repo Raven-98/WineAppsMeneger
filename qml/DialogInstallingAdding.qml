@@ -58,7 +58,11 @@ WindowDialog {
             "winBit": winBit,
             "wine": wine
         }
-        AppEngine.addApplication(app_data)
+
+        if (root.state === "installing")
+            AppEngine.installApplication(app_data)
+        else
+            AppEngine.addApplication(app_data)
     }
 
     content: GridLayout {
