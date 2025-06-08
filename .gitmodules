@@ -1,0 +1,3 @@
+[submodule "umu"]
+	path = umu
+	url = https://github.com/Open-Wine-Components/umu-launcher.git
