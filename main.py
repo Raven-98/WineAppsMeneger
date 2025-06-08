@@ -489,13 +489,15 @@ class AppEngine(QObject):
         return result
 
     async def _get_wine_list(self) -> None:
-        '''
-            Елемент має структуру: '{тип wine} - {версія wine}': ['{url для завантаження}', '{чи інстальовано}', "{published_at}"]
-        '''
         versions = self._load_cached_wine_list()
         if versions is None:
             versions = await self._get_origin_wine_list()
             self._save_cached_wine_list(versions)
+        else:
+            installed_wines = self._get_installed_wines()
+            for wine in versions.keys():
+                if wine.split(' - ')[0] != 'system':
+                    versions[wine][1] = wine in installed_wines
         self.getedWineList.emit(versions)
 
     async def _update_wine_list(self) -> None:
@@ -504,6 +506,9 @@ class AppEngine(QObject):
         self.getedWineList.emit(versions)
 
     async def _get_origin_wine_list(self) -> dict:
+        '''
+            Елемент має структуру: '{тип wine} - {версія wine}': ['{url для завантаження}', '{чи інстальовано}', "{published_at}"]
+        '''
         # versions = await self._get_wine_versions()
         versions = {}
         sys_wine = self._find_system_wine()
