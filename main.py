@@ -58,6 +58,9 @@ WIN_VER_MAP = {
     "Windows 10": "win10"
 }
 
+APP_PATH = Path(__file__).parent
+APP_VERSION = (APP_PATH / "VERSION").read_text().strip()
+
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -845,10 +848,11 @@ class AppEngine(QObject):
                 except Exception as e:
                     self.error.emit(f"Failed to parse settings_json: {e}")
             if app_settings.wine_version.split(' - ')[0] == "Proton-GE":
-                pass
+                env["PROTONPATH"] = str(app_settings.wine_path).replace("/files/bin/wine", "")
+                command = [APP_PATH / "umu-run", app_settings.exe_path]
             else:
-                pass
-            command = [app_settings.wine_path, app_settings.exe_path]
+                command = [app_settings.wine_path, app_settings.exe_path]
+            # command = [app_settings.wine_path, app_settings.exe_path]
             process = subprocess.Popen(command, env=env)
             self.message.emit(f"Started process with PID: {process.pid}")
         except Exception as e:
@@ -909,8 +913,6 @@ class AppEngine(QObject):
 
 if __name__ == "__main__":
     import rc_resources
-
-    APP_VERSION = (Path(__file__).parent / "VERSION").read_text().strip()
 
     app = QGuiApplication(sys.argv)
     # app = QApplication(sys.argv)
