@@ -228,50 +228,77 @@ class AppEngine(QObject):
         await self._inst_or_add_app(data, False)
 
     async def _inst_or_add_app(self, data: dict, inst: bool = True) -> None:
+        if not self._validate_installation_input(data):
+            return
+
+        wine_prefix_path = self._create_prefix(data['appName'])
+        wine_path = self._get_wine_path(data['wine'], data['winBit'])
+        env = self._prepare_wine_env(wine_prefix_path, data['winBit'])
+        self._set_wine_registry_version(wine_path, env, data['winVer'])
+
+        exe_path = await self._install_or_add(data, wine_prefix_path, wine_path, env, inst)
+        if not exe_path:
+            return
+
+        app_icon_file, usr_app_data = await self._handle_desktop_files(wine_prefix_path)
+        self._save_app_metadata(data, wine_prefix_path, wine_path, exe_path, app_icon_file, usr_app_data)
+
+    def _validate_installation_input(self, data: dict) -> bool:
         wine_prefix_path = Path.home() / WINE_APPS_DIR / data['appName']
         if wine_prefix_path.exists():
             self.error.emit(f"Application '{data['appName']}' already exists.")
-            return
+            return False
 
         wine_path = self._get_wine_path(data['wine'], data['winBit'])
         if not wine_path:
             self.error.emit(f"Wine version {data['wine']} not found.")
-            return
+            return False
 
+        return True
+
+    def _create_prefix(self, app_name: str) -> Path:
+        wine_prefix_path = Path.home() / WINE_APPS_DIR / app_name
+        wine_prefix_path.mkdir(parents=True, exist_ok=True)
+        return wine_prefix_path
+
+    async def _install_or_add(self, data, wine_prefix_path, wine_path, env, inst: bool):
         self.message.emit(f"{'Installing' if inst else 'Adding'} {data['appName']}...")
 
-        wine_prefix_path.mkdir(parents=True, exist_ok=True)
-        env = self._prepare_wine_env(wine_prefix_path, data['winBit'])
-        self._set_wine_registry_version(wine_path, env, data['winVer'])
-        exe_path = None
         if inst:
             exe_path = await self._run_installer(wine_prefix_path, wine_path, data['appExe'], env, data['appName'])
+            if not exe_path:
+                return None
+            self.message.emit(f"{data['appName']} installed successfully.")
         else:
-            self.message.emit(f"{data['appName']} added successfully.")
             exe_path = data['appExe']
+            self.message.emit(f"{data['appName']} added successfully.")
 
+        return exe_path
+
+    async def _handle_desktop_files(self, wine_prefix_path: Path):
         app_icon_file = None
         usr_app_data = await self._parse_user_reg(wine_prefix_path)
 
         if usr_app_data:
             for file in usr_app_data["menu_list"]:
                 os.remove(file)
-
             app_icon_file = self._find_app_icon(wine_prefix_path, usr_app_data["desktop_list"])
 
-        if exe_path:
-            stt_data = {
-                "name" : data['appName'],
-                "wine_prefix_path" : str(wine_prefix_path),
-                "wine_path" : str(wine_path),
-                "wine_version" : str(data['wine']),
-                "wine_bit" : str(data['winBit']),
-                "exe_path" : str(exe_path),
-                "icon_path" : str(app_icon_file) if app_icon_file else None,
-                "settings_json" :  None,
-                "desktop_list": "|".join(usr_app_data["desktop_list"]) if usr_app_data else ""
-            }
-            self._saveInstSettingsSignal.emit(stt_data)
+        return app_icon_file, usr_app_data
+
+    def _save_app_metadata(self, data, wine_prefix_path, wine_path, exe_path, app_icon_file, usr_app_data):
+        stt_data = {
+            "name": data['appName'],
+            "wine_prefix_path": str(wine_prefix_path),
+            "wine_path": str(wine_path),
+            "wine_version": str(data['wine']),
+            "wine_bit": str(data['winBit']),
+            "exe_path": str(exe_path),
+            "icon_path": str(app_icon_file) if app_icon_file else None,
+            "settings_json": None,
+            "desktop_list": "|".join(usr_app_data["desktop_list"]) if usr_app_data else ""
+        }
+        self._saveInstSettingsSignal.emit(stt_data)
 
     def _prepare_wine_env(self, wine_prefix_path: Path, win_bit: str) -> dict:
         env = os.environ.copy()
@@ -392,72 +419,87 @@ class AppEngine(QObject):
 
     async def _delete_app(self, app_settings: AppData) -> None:
         try:
-            appName = app_settings.name
-            system_reg_path = f"{app_settings.wine_prefix_path}/system.reg"
+            app_name = app_settings.name
+            exe_dir_ux = self._get_exe_directory(app_settings)
+            uninstall_exe = self._get_uninstall_exe(app_settings, exe_dir_ux)
+
+            self._remove_app_icons(app_settings, exe_dir_ux, uninstall_exe)
+            self._remove_desktop_files(app_settings.desktop_list)
+
+            if uninstall_exe:
+                self._run_uninstaller(app_settings, exe_dir_ux, uninstall_exe)
+
+            shutil.rmtree(app_settings.wine_prefix_path)
+            self.deleteSettingsSignal.emit(app_name)
+            self.message.emit(f"{app_name} deleted")
+            self.deleteAppSignal.emit()
+
+        except Exception as e:
+            self.error.emit(str(e))
+
+    def _get_exe_directory(self, app_settings: AppData) -> str:
+        exe_path = app_settings.exe_path
+        return exe_path[:exe_path.rfind('/')]
+
+    def _get_uninstall_exe(self, app_settings: AppData, exe_dir_ux: str) -> str | None:
+        system_reg_path = f"{app_settings.wine_prefix_path}/system.reg"
+        try:
             with open(system_reg_path, "r", encoding="utf-8") as reg_file:
                 reg_data = reg_file.read()
-            exe_dir_ux = app_settings.exe_path
-            exe_dir_ux = exe_dir_ux[:exe_dir_ux.rfind('/')]
-            exe_dir = self._unix_path_to_win(exe_dir_ux, app_settings.wine_prefix_path).replace("\\", "\\\\")
-            escaped_dir = re.escape(exe_dir)
-            match = re.search(fr'"UninstallString"="\\*"?{escaped_dir}([^"]+)"', reg_data)
-            uninst_exe = None
+            exe_dir_win = self._unix_path_to_win(exe_dir_ux, app_settings.wine_prefix_path).replace("\\", "\\\\")
+            match = re.search(fr'"UninstallString"="\\*"?{re.escape(exe_dir_win)}([^\"]+)?"', reg_data)
             if match:
-                uninst_path = match.group(1)
-                uninst_path = uninst_path.split("\\")
-                for i, part in enumerate(uninst_path):
+                parts = match.group(1).split("\\")
+                for part in parts:
                     if part.lower().endswith(".exe"):
-                        uninst_exe = part
-                        break
-            ## Видалення додаткових файлів що створює системний wine
-            # Іконки
-            app_exe = None
-            match = re.search(fr'"DisplayIcon"="\\*"?{escaped_dir}([^"]+)"', reg_data)
-            if match:
-                uninst_path = match.group(1)
-                uninst_path = uninst_path.split("\\")
-                for i, part in enumerate(uninst_path):
-                    if part.lower().endswith(".exe"):
-                        app_exe = part
-                        break
-            if app_exe:
-                app_name = app_exe.replace(".exe", "")
-                icons_base_path = Path.home() / ".local/share/icons/hicolor"
-                icons_path_lst = [folder for folder in os.listdir(icons_base_path) if os.path.isdir(os.path.join(icons_base_path, folder))]
-                for folder in icons_path_lst:
-                    icons_path = icons_base_path / folder / "apps"
-                    # app_icon_file = next(icons_path.glob(f"*{app_name}*"), None)
-                    app_icons_lst = list(icons_path.glob(f"*{app_name}*"))
-                    for app_icon_file in app_icons_lst:
-                        os.remove(app_icon_file)
-                        self.message.emit(f"Removed {app_icon_file}")
-                    if uninst_exe:
-                        uinst_icons_lst = list(icons_path.glob(f"*{uninst_exe.replace('.exe', '')}*"))
-                        for uninst_icon_file in uinst_icons_lst:
-                            os.remove(uninst_icon_file)
-                            self.message.emit(f"Removed {uninst_icon_file}")
-            # desctop файли
-            for desktop_file in app_settings.desktop_list.split('|'):
-                try:
-                    os.remove(desktop_file)
-                    self.message.emit(f"Removed desktop file: {desktop_file}")
-                except FileNotFoundError:
-                    self.message.emit(f"Desktop file not found: {desktop_file}")
-                except Exception as e:
-                    self.error.emit(f"Failed to remove desktop file {desktop_file}: {e}")
-            ##
-            if uninst_exe:
-                env = os.environ.copy()
-                env["WINEPREFIX"] = str(app_settings.wine_prefix_path)
-                command = [app_settings.wine_path, f"{exe_dir_ux}/{uninst_exe}"]
-                process = subprocess.Popen(command, env=env)
-                process.wait()
-            shutil.rmtree(app_settings.wine_prefix_path)
-            self.deleteSettingsSignal.emit(appName)
-            self.message.emit(f"{appName} deleted")
-            self.deleteAppSignal.emit()
+                        return part
         except Exception as e:
-            self.error.emit(e)
+            self.error.emit(f"Error reading uninstall exe: {e}")
+        return None
+
+    def _remove_app_icons(self, app_settings: AppData, exe_dir_ux: str, uninstall_exe: str | None):
+        system_reg_path = f"{app_settings.wine_prefix_path}/system.reg"
+        try:
+            with open(system_reg_path, "r", encoding="utf-8") as reg_file:
+                reg_data = reg_file.read()
+            match = re.search(fr'"DisplayIcon"="\\*"?{re.escape(self._unix_path_to_win(exe_dir_ux, app_settings.wine_prefix_path))}([^\"]+)?"', reg_data)
+            if match:
+                exe_name = match.group(1).split("\\")[-1].replace(".exe", "")
+                self._remove_icons_by_name(exe_name)
+                if uninstall_exe:
+                    self._remove_icons_by_name(uninstall_exe.replace(".exe", ""))
+        except Exception as e:
+            self.error.emit(f"Failed to remove icons: {e}")
+
+    def _remove_icons_by_name(self, name: str):
+        icons_base_path = Path.home() / ".local/share/icons/hicolor"
+        for folder in icons_base_path.glob("*/apps"):
+            for icon_file in folder.glob(f"*{name}*"):
+                try:
+                    os.remove(icon_file)
+                    self.message.emit(f"Removed {icon_file}")
+                except Exception as e:
+                    self.error.emit(f"Failed to remove {icon_file}: {e}")
+
+    def _remove_desktop_files(self, desktop_list_str: str):
+        for desktop_file in desktop_list_str.split('|'):
+            try:
+                os.remove(desktop_file)
+                self.message.emit(f"Removed desktop file: {desktop_file}")
+            except FileNotFoundError:
+                self.message.emit(f"Desktop file not found: {desktop_file}")
+            except Exception as e:
+                self.error.emit(f"Failed to remove desktop file {desktop_file}: {e}")
+
+    def _run_uninstaller(self, app_settings: AppData, exe_dir_ux: str, uninstall_exe: str):
+        env = os.environ.copy()
+        env["WINEPREFIX"] = str(app_settings.wine_prefix_path)
+        command = [app_settings.wine_path, f"{exe_dir_ux}/{uninstall_exe}"]
+        try:
+            process = subprocess.Popen(command, env=env)
+            process.wait()
+        except Exception as e:
+            self.error.emit(f"Error running uninstaller: {e}")
 
     def _get_installed_apps(self) -> list:
         wine_apps_path = Path.home() / WINE_APPS_DIR
@@ -522,7 +564,7 @@ class AppEngine(QObject):
 
     def _save_cached_wine_list(self, wine_list: dict) -> None:
         self.message.emit("Saving cached data")
-        cache_file = Path.home() / WINE_VERSIONS_CACHE
+        cache_file = self._get_wine_cache_file()
         try:
             with open(cache_file, "w", encoding="utf-8") as f:
                 json.dump(wine_list, f, indent=2)
@@ -532,7 +574,7 @@ class AppEngine(QObject):
 
     def _load_cached_wine_list(self) -> dict:
         self.message.emit("Loading cached data")
-        cache_file = Path.home() / WINE_VERSIONS_CACHE
+        cache_file = self._get_wine_cache_file()
         if not cache_file.exists():
             self.message.emit("No cached wine list found.")
             return None
@@ -548,6 +590,9 @@ class AppEngine(QObject):
         except Exception as e:
             self.error.emit(f"Failed to load cached wine list: {str(e)}")
             return None
+
+    def _get_wine_cache_file(self) -> Path:
+        return Path.home() / WINE_VERSIONS_CACHE
 
     def _find_system_wine(self) -> str:
         wine_path = shutil.which("wine")
@@ -648,7 +693,6 @@ class AppEngine(QObject):
         extract_to = archive_dir
         extract_to.mkdir(parents=True, exist_ok=True)
 
-        # Визначаємо режим архіву
         if archive_path.suffixes[-2:] == ['.tar', '.xz']:
             mode = "r:xz"
         elif archive_path.suffixes[-2:] == ['.tar', '.gz']:
@@ -771,6 +815,40 @@ class AppEngine(QObject):
                             wine_path = full_path
         return wine_path
 
+    def _build_app_environment(self, app_settings: AppData) -> dict:
+        env = os.environ.copy()
+        env["WINEPREFIX"] = str(app_settings.wine_prefix_path)
+        if app_settings.settings_json:
+            try:
+                settings = json.loads(app_settings.settings_json)
+                if "env" in settings:
+                    for pair in settings["env"].split():
+                        if '=' in pair:
+                            key, val = pair.split('=', 1)
+                            env[key] = val
+            except Exception as e:
+                self.error.emit(f"Failed to parse settings_json: {e}")
+        if app_settings.wine_version.split(' - ')[0] == "Proton-GE":
+            env["PROTONPATH"] = str(app_settings.wine_path).replace("/files/bin/wine", "")
+        return env
+
+    def _get_run_command(self, app_settings: AppData) -> list:
+        if app_settings.wine_version.split(' - ')[0] == "Proton-GE":
+            return [APP_PATH / "umu-run", app_settings.exe_path]
+        else:
+            return [app_settings.wine_path, app_settings.exe_path]
+
+    def _prepare_winecfg_env(self, app_settings: AppData) -> dict:
+        env = os.environ.copy()
+        env["WINEPREFIX"] = str(app_settings.wine_prefix_path)
+        return env
+
+    def _prepare_winetricks_env(self, app_settings: AppData) -> dict:
+        env = os.environ.copy()
+        env["WINE"] = str(app_settings.wine_path)
+        env["WINEPREFIX"] = str(app_settings.wine_prefix_path)
+        return env
+
 ## public
 
     @Slot(dict)
@@ -839,36 +917,18 @@ class AppEngine(QObject):
     def runApp(self, appName: str) -> None:
         try:
             app_settings = self.appDB.get_settings(appName)
-            env = os.environ.copy()
-            env["WINEPREFIX"] = str(app_settings.wine_prefix_path)
-            if app_settings.settings_json:
-                try:
-                    settings = json.loads(app_settings.settings_json)
-                    if "env" in settings:
-                        env_str = settings["env"]
-                        for pair in env_str.split():
-                            if '=' in pair:
-                                key, val = pair.split('=', 1)
-                                env[key] = val
-                except Exception as e:
-                    self.error.emit(f"Failed to parse settings_json: {e}")
-            if app_settings.wine_version.split(' - ')[0] == "Proton-GE":
-                env["PROTONPATH"] = str(app_settings.wine_path).replace("/files/bin/wine", "")
-                command = [APP_PATH / "umu-run", app_settings.exe_path]
-            else:
-                command = [app_settings.wine_path, app_settings.exe_path]
-            # command = [app_settings.wine_path, app_settings.exe_path]
+            env = self._build_app_environment(app_settings)
+            command = self._get_run_command(app_settings)
             process = subprocess.Popen(command, env=env)
             self.message.emit(f"Started process with PID: {process.pid}")
         except Exception as e:
-            self.error.emit(e)
+            self.error.emit(str(e))
 
     @Slot(str)
-    def runWinecng(self, appName: str) -> None:
+    def runWinecfg(self, appName: str) -> None:
         try:
             app_settings = self.appDB.get_settings(appName)
-            env = os.environ.copy()
-            env["WINEPREFIX"] = str(app_settings.wine_prefix_path)
+            env = self._prepare_winecfg_env(app_settings)
             command = [app_settings.wine_path, "winecfg"]
             process = subprocess.Popen(command, env=env)
             self.message.emit(f"Started process with PID: {process.pid}")
@@ -879,14 +939,11 @@ class AppEngine(QObject):
     def runWinetricks(self, appName: str) -> None:
         try:
             app_settings = self.appDB.get_settings(appName)
-            env = os.environ.copy()
-            env["WINE"] = str(app_settings.wine_path)
-            env["WINEPREFIX"] = str(app_settings.wine_prefix_path)
-            command = ["winetricks"]
-            process = subprocess.Popen(command, env=env)
+            env = self._prepare_winetricks_env(app_settings)
+            process = subprocess.Popen(["winetricks"], env=env)
             self.message.emit(f"Started process with PID: {process.pid}")
         except Exception as e:
-            self.error.emit(e)
+            self.error.emit(str(e))
 
     @Slot(str, str, result=str)
     def getWinePath(self, wine_version: str, win_bit: str) -> str:
@@ -903,12 +960,7 @@ class AppEngine(QObject):
 ###
     # @Slot()
     # def test(self): pass
-    #     # print(self.appDB.get_columns(["name", "exe_path"]))
-    #     # print(self._get_db_apps())
-    #     # wine_prefix = Path.home() / WINE_APPS_DIR / "cpu-z"
-    #     # self.async_worker.add_task(self._parse_user_reg(wine_prefix))
-    # #     p = self._get_sys_reg_exe_path(wine_prefix / "system.reg")
-    # #     print(self._win_path_to_unix(p, wine_prefix))
+
     # @Slot(result=dict)
     # def testGetWines(self):
     #     from test_const import wines

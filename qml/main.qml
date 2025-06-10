@@ -280,7 +280,7 @@ ApplicationWindow {
         }
         Action {
             text: qsTr("Run winecfg")
-            onTriggered: { AppEngine.runWinecng(appsBttContextMenu.appName) }
+            onTriggered: { AppEngine.runWinecfg(appsBttContextMenu.appName) }
         }
         Action {
             text: qsTr("Run winetricks")
@@ -312,7 +312,7 @@ ApplicationWindow {
         }
         Action {
             text: qsTr("Run winecfg")
-            onTriggered: { AppEngine.runWinecng(appsContextMenu.appName) }
+            onTriggered: { AppEngine.runWinecfg(appsContextMenu.appName) }
         }
         Action {
             text: qsTr("Run winetricks")
