@@ -5,9 +5,10 @@ import Modules
 
 MenuSeparator {
     objectName: "menuSeparator"
-    horizontalPadding: padding + 4
+    horizontalPadding: padding + 4    
+    property bool light: false
     contentItem: Rectangle {
         implicitHeight: 1
-        color: Colors.textPrimary
+        color: light ? Colors.panelAltBackground : Colors.textPrimary
     }
 }

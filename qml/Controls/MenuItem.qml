@@ -7,6 +7,7 @@ MenuItem {
     id: root
 
     property var menuParent: null
+    property bool light: false
 
     onTextChanged: {
         if (menuParent) menuParent.changeWidth()
@@ -42,7 +43,12 @@ MenuItem {
             text: root.text
             font.pixelSize: Helper.fontPixelSize
             font.bold: root.highlighted
-            color: root.highlighted ? Colors.selectionText : Colors.textPrimary
+            color: root.highlighted ? Colors.selectionText : light ? "#000" : Colors.textPrimary
+        }
+        Text {
+            text: root.action && root.action.shortcut && root.action.shortcut !== "" ? root.action.shortcut.toString() : ""
+            font.pixelSize: Helper.fontPixelSize
+            color: light ? "#000" : Colors.textSecondary
         }
     }
     indicator: Item {
@@ -56,7 +62,7 @@ MenuItem {
             height: 18
             anchors.centerIn: parent
             visible: root.checkable
-            color: root.highlighted ? Colors.selectionText : Colors.textPrimary
+            color: root.highlighted ? Colors.selectionText : light ? "#000" : Colors.textPrimary
             radius: 3
         }
         Rectangle {
@@ -77,25 +83,7 @@ MenuItem {
             }
         }
     }
-    arrow: Canvas {
-        id: degArrow
-        x: root.mirrored ? root.leftPadding : root.width - width
-                               - root.rightPadding
-        y: root.topPadding + (root.availableHeight - height) / 2
-        width: root.parent.implHeight - 2
-        height: root.parent.implHeight - 2
-        visible: root.subMenu
-        onPaint: {
-            var ctx = getContext("2d")
-            let wh = Math.round(root.parent.implHeight * 1 / 3)
-            ctx.fillStyle = root.highlighted ? Colors.selectionText : Colors.textPrimary
-            ctx.moveTo(wh, wh)
-            ctx.lineTo(width - wh, height / 2)
-            ctx.lineTo(wh, height - wh)
-            ctx.closePath()
-            ctx.fill()
-        }
-    }
+
     background: Rectangle {
         anchors.fill: parent
         width: root.width

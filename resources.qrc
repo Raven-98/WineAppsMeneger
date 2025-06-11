@@ -32,5 +32,13 @@
         <file>img/file-64.png</file>
         <file>img/open-folder-64.png</file>
         <file>img/error-64.png</file>
+        <file>img/paste-32.png</file>
+        <file>img/copy-32.png</file>
+        <file>img/cut-32.png</file>
+        <file>qml/Controls/MenuSeparator.qml</file>
+        <file>img/stop-64.png</file>
+        <file>img/cut-32-light.png</file>
+        <file>img/paste-32-light.png</file>
+        <file>img/copy-32-light.png</file>
     </qresource>
 </RCC>

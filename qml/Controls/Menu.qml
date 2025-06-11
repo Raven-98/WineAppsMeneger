@@ -11,6 +11,7 @@ Menu {
     readonly property int implHeight: 30
     property bool hovered: false
     readonly property bool isCustomMenu: true
+    property bool light: false
 
     function changeWidth() {
         width = Helper.widthMenuBar(contentModel, fontMetrics, implHeight)
@@ -42,13 +43,13 @@ Menu {
                 text: menuItem.text
                 font.pixelSize: Helper.fontPixelSize
                 font.bold: menuItem.highlighted
-                color: menuItem.highlighted ? Colors.selectionText : Colors.textPrimary
+                color: menuItem.highlighted ? Colors.selectionText : light ? "#000" : Colors.textPrimary
                 Layout.fillWidth: true
             }
             Text {
                 text: menuItem.action && menuItem.action.shortcut && menuItem.action.shortcut !== "" ? menuItem.action.shortcut.toString() : ""
                 font.pixelSize: Helper.fontPixelSize
-                color: Colors.textSecondary
+                color: light ? "#000" : Colors.textSecondary
             }
         }
         indicator: Item {
@@ -62,7 +63,7 @@ Menu {
                 height: 18
                 anchors.centerIn: parent
                 visible: menuItem.checkable
-                color: menuItem.highlighted ? Colors.selectionText : Colors.textPrimary
+                color: menuItem.highlighted ? Colors.selectionText : light ? "#000" : Colors.textPrimary
                 radius: 3
             }
             Rectangle {
@@ -94,7 +95,7 @@ Menu {
             onPaint: {
                 var ctx = getContext("2d")
                 let wh = Math.round(root.implHeight * 1 / 3)
-                ctx.fillStyle = menuItem.highlighted ? Colors.selectionText : Colors.textPrimary
+                ctx.fillStyle = menuItem.highlighted ? Colors.selectionText : light ? Colors.panelAltBackground : Colors.textPrimary
                 ctx.moveTo(wh, wh)
                 ctx.lineTo(width - wh, height / 2)
                 ctx.lineTo(wh, height - wh)
@@ -113,7 +114,8 @@ Menu {
     background: Rectangle {
         implicitWidth: root.implWidth
         implicitHeight: root.implHeight
-        color: Colors.panelAltBackground
+        color: !light ? Colors.panelAltBackground : Colors.textPrimary
+        border.color: light ? Colors.borderLight : "transparent"
     }
 
     FontMetrics { id: fontMetrics}
