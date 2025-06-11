@@ -200,6 +200,7 @@ class AppEngine(QObject):
     deleteAppSignal = Signal()
     appStarted = Signal(str)
     appExited = Signal(str)
+    runningAppsChanged = Signal(list)
 
     def __init__(self):
         super().__init__()
@@ -898,6 +899,7 @@ class AppEngine(QObject):
         self.running_apps.pop(appName, None)
         self.message.emit(f"{appName} exited.")
         self.appExited.emit(appName)
+        self.runningAppsChanged.emit(list(self.running_apps.keys()))
 
 ## public
 
@@ -976,6 +978,7 @@ class AppEngine(QObject):
             self.running_apps[appName] = process
             self.message.emit(f"Started {appName} with PID {process.pid}")
             self.appStarted.emit(appName)
+            self.runningAppsChanged.emit(list(self.running_apps.keys()))
             threading.Thread(target=self._monitor_process, args=(appName, process), daemon=True).start()
         except Exception as e:
             self.error.emit(str(e))

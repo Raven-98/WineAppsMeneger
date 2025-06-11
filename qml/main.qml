@@ -32,7 +32,7 @@ ApplicationWindow {
         function onUpdateModelSignal(installedApps) {
             appsModel.clear();
             for (let app of installedApps) {
-                appsModel.append({ "name": app.name, "icon": app.icon });
+                appsModel.append({ "name": app.name, "icon": app.icon, "running": false });
             }
         }
 
@@ -52,12 +52,11 @@ ApplicationWindow {
             AppEngine.getWineList()
         }
 
-        function onAppStarted(name) {
-            console.log(name + " started")
-        }
-
-        function onAppExited(name) {
-            console.log(name + " exited")
+        function onRunningAppsChanged(appsList) {
+            for (var i = 0; i < appsModel.count; ++i) {
+                var item = appsModel.get(i)
+                appsModel.set(i, { "name": item.name, "icon": item.icon, "running": appsList.includes(item.name) })
+            }
         }
     }
 
@@ -239,13 +238,21 @@ ApplicationWindow {
                         ImageButton {
                             width: 32
                             height: 32
-                            icon.source: "qrc:/img/play-64.png"
-                            onClicked: { AppEngine.runApp(model.name) }
+                            icon.source: model.running ? "qrc:/img/stop-64.png" : "qrc:/img/play-64.png"
+                            onClicked: {
+                                if (model.running) {
+                                    AppEngine.terminateApp(model.name)
+                                }
+                                else {
+                                    AppEngine.runApp(model.name)
+                                }
+                            }
                         }
                         ImageButton {
                             width: 32
                             height: 32
                             icon.source: "qrc:/img/settings-64.png"
+                            enabled: !model.running
                             onClicked: {
                                 dialogConfig.appName = model.name
                                 dialogConfig.appSettings = AppEngine.getSettings(model.name)
