@@ -26,6 +26,7 @@ import logging
 import configparser
 import json
 import time
+import threading
 
 
 """
@@ -197,14 +198,19 @@ class AppEngine(QObject):
     _saveInstSettingsSignal = Signal(dict)
     deleteSettingsSignal = Signal(str)
     deleteAppSignal = Signal()
+    appStarted = Signal(str)
+    appExited = Signal(str)
 
     def __init__(self):
         super().__init__()
         self.async_worker = AsyncWorker()
         QCoreApplication.instance().aboutToQuit.connect(self._on_about_to_quit)
+
+        self.appDB = AppSettingsDB()
+        self.running_apps: dict[str, subprocess.Popen] = {}
+
         # self.error.connect(self.onError)
         # self.message.connect(self.onMessage)
-        self.appDB = AppSettingsDB()
         self.saveSettingsSignal.connect(self.saveSettings)
         self._saveInstSettingsSignal.connect(self._save_inst_settings)
         self.deleteSettingsSignal.connect(self.deleteSettings)
@@ -883,6 +889,16 @@ class AppEngine(QObject):
         env["WINEPREFIX"] = str(app_settings.wine_prefix_path)
         return env
 
+    def _is_app_running(self, appName: str) -> bool:
+        proc = self.running_apps.get(appName)
+        return proc is not None and proc.poll() is None
+
+    def _monitor_process(self, appName: str, proc: subprocess.Popen):
+        proc.wait()
+        self.running_apps.pop(appName, None)
+        self.message.emit(f"{appName} exited.")
+        self.appExited.emit(appName)
+
 ## public
 
     @Slot(dict)
@@ -949,14 +965,29 @@ class AppEngine(QObject):
 
     @Slot(str)
     def runApp(self, appName: str) -> None:
+        if appName in self.running_apps and self._is_app_running(appName):
+            self.message.emit(f"{appName} is already running.")
+            return
         try:
             app_settings = self.appDB.get_settings(appName)
             env = self._build_app_environment(app_settings)
-            command = self._get_run_command(app_settings)
+            command = self._get_run_command(app_settings)            
             process = subprocess.Popen(command, env=env)
-            self.message.emit(f"Started process with PID: {process.pid}")
+            self.running_apps[appName] = process
+            self.message.emit(f"Started {appName} with PID {process.pid}")
+            self.appStarted.emit(appName)
+            threading.Thread(target=self._monitor_process, args=(appName, process), daemon=True).start()
         except Exception as e:
             self.error.emit(str(e))
+
+    @Slot(str)
+    def terminateApp(self, appName: str) -> None:
+        proc = self.running_apps.get(appName)
+        if proc and proc.poll() is None:
+            proc.terminate()
+            self.message.emit(f"{appName} terminated.")
+        else:
+            self.message.emit(f"{appName} is not running.")
 
     @Slot(str)
     def runWinecfg(self, appName: str) -> None:
@@ -983,6 +1014,14 @@ class AppEngine(QObject):
     def getWinePath(self, wine_version: str, win_bit: str) -> str:
         return str(self._get_wine_path(wine_version, win_bit))
 
+    @Slot(result=bool)
+    def hasRunningApps(self) -> bool:
+        return any(proc.poll() is None for proc in self.running_apps.values())
+
+    @Slot(str, result=bool)
+    def isAppRunning(self, appName: str) -> bool:
+        return self._is_app_running(appName)
+
     @Slot(str)
     def onError(self, err: str) -> None:
         logger.error(err)
@@ -990,6 +1029,7 @@ class AppEngine(QObject):
     @Slot(str)
     def onMessage(self, mess: str) -> None:
         logger.info(mess)
+
 
 ###
     # @Slot()

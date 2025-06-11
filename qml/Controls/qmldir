@@ -2,6 +2,7 @@ module Controls
 MenuBar 1.0 MenuBar.qml
 Menu 1.0 Menu.qml
 MenuItem 1.0 MenuItem.qml
+MenuSeparator 1.0 MenuSeparator.qml
 ImageButton 1.0 ImageButton.qml
 WindowDialog 1.0 WindowDialog.qml
 Label 1.0 Label.qml

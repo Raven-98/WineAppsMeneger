@@ -51,6 +51,23 @@ ApplicationWindow {
         function onWineStatusChanged() {
             AppEngine.getWineList()
         }
+
+        function onAppStarted(name) {
+            console.log(name + " started")
+        }
+
+        function onAppExited(name) {
+            console.log(name + " exited")
+        }
+    }
+
+    onClosing: (close) => {
+        close.accepted = !AppEngine.hasRunningApps()
+        if (!close.accepted) {
+            errorDialog.text = qsTr("You cannot exit because you have processes running.")
+            errorDialog.show()
+            error(errorDialog.text)
+        }
     }
 
     DialogConfig { id: dialogConfig }
@@ -273,18 +290,33 @@ ApplicationWindow {
         id: appsBttContextMenu
 
         property string appName
+        property bool appRunning
 
+        onVisibleChanged: {
+            if (visible)
+                appRunning = AppEngine.isAppRunning(appName)
+        }
+
+        Action {
+            text: qsTr("Terminate")
+            onTriggered: { AppEngine.terminateApp(appsBttContextMenu.appName) }
+            enabled: appsBttContextMenu.appRunning
+        }
         Action {
             text: qsTr("Delete")
             onTriggered: { AppEngine.deleteApp(appsBttContextMenu.appName) }
+            enabled: !appsBttContextMenu.appRunning
         }
+        MenuSeparator {}
         Action {
             text: qsTr("Run winecfg")
             onTriggered: { AppEngine.runWinecfg(appsBttContextMenu.appName) }
+            enabled: !appsBttContextMenu.appRunning
         }
         Action {
             text: qsTr("Run winetricks")
             onTriggered: { AppEngine.runWinetricks(appsBttContextMenu.appName) }
+            enabled: !appsBttContextMenu.appRunning
         }
     }
 
@@ -292,14 +324,27 @@ ApplicationWindow {
         id: appsContextMenu
 
         property string appName
+        property bool appRunning
+
+        onVisibleChanged: {
+            if (visible)
+                appRunning = AppEngine.isAppRunning(appName)
+        }
 
         Action {
             text: qsTr("Run")
             onTriggered: { AppEngine.runApp(appsContextMenu.appName) }
+            enabled: !appsContextMenu.appRunning
+        }
+        Action {
+            text: qsTr("Terminate")
+            onTriggered: { AppEngine.terminateApp(appsBttContextMenu.appName) }
+            enabled: appsContextMenu.appRunning
         }
         Action {
             text: qsTr("Delete")
             onTriggered: { AppEngine.deleteApp(appsContextMenu.appName) }
+            enabled: !appsContextMenu.appRunning
         }
         Action {
             text: qsTr("Configure")
@@ -309,14 +354,18 @@ ApplicationWindow {
                 dialogConfig.installedWines = AppEngine.getInstalledWines()
                 dialogConfig.show()
             }
+            enabled: !appsContextMenu.appRunning
         }
+        MenuSeparator {}
         Action {
             text: qsTr("Run winecfg")
             onTriggered: { AppEngine.runWinecfg(appsContextMenu.appName) }
+            enabled: !appsContextMenu.appRunning
         }
         Action {
             text: qsTr("Run winetricks")
             onTriggered: { AppEngine.runWinetricks(appsContextMenu.appName) }
+            enabled: !appsContextMenu.appRunning
         }
     }
 }
