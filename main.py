@@ -536,11 +536,14 @@ class AppEngine(QObject):
             versions = await self._get_origin_wine_list()
             self._save_cached_wine_list(versions)
         else:
-            installed_wines = self._get_installed_wines()
-            for wine in versions.keys():
-                if wine.split(' - ')[0] != 'system':
-                    versions[wine][1] = wine in installed_wines
+            self._mark_installed_wines(versions)
         self.getedWineList.emit(versions)
+
+    def _mark_installed_wines(self, versions: dict) -> None:
+        installed_wines = self._get_installed_wines()
+        for wine in versions.keys():
+            if wine.split(' - ')[0] != 'system':
+                versions[wine][1] = wine in installed_wines
 
     async def _update_wine_list(self) -> None:
         versions = await self._get_origin_wine_list()
@@ -655,49 +658,61 @@ class AppEngine(QObject):
         await self._download_github_releases(version, download_url)
 
     async def _download_github_releases(self, version: str, download_url: str) -> None:
-        self.message.emit(f"Downloading Wine GE version {version}...")
-        tar_type = download_url.split('/')[-1].split('.')[-1]
-        save_path = Path.home() / WINE_VERSIONS_DIR / f"{version}.tar.{tar_type}"
+        self.message.emit(f"Downloading Wine version {version}...")
+        save_path = self._get_wine_archive_path(version, download_url)
+
         if save_path.exists():
-            self.message.emit(f"{version} already exists at {save_path}. Skipping download.")
+            self.message.emit(f"{version} already exists. Skipping download.")
             self._extract_tar(version)
             return
-        save_path.parent.mkdir(parents=True, exist_ok=True)
+
+        self._prepare_archive_directory(save_path)
+        success = await self._stream_download(download_url, save_path)
+        if success:
+            self._extract_tar(version)
+        self.wineStatusChanged.emit()
+
+
+    def _get_wine_archive_path(self, version: str, url: str) -> Path:
+        ext = url.split('.')[-1]
+        return Path.home() / WINE_VERSIONS_DIR / f"{version}.tar.{ext}"
+
+
+    def _prepare_archive_directory(self, path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+
+    async def _stream_download(self, url: str, dest_path: Path) -> bool:
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(download_url) as response:
-                    if response.status == 200:
-                        with open(save_path, 'wb') as f:
-                            while True:
-                                chunk = await response.content.read(1024 * 8)
-                                if not chunk:
-                                    break
-                                f.write(chunk)
-                        self.message.emit(f"Downloaded {version} to {save_path}")
-                        self._extract_tar(version)
-                    else:
-                        self.error.emit(f"Failed to download {version}: {response.status}")
+                async with session.get(url) as response:
+                    if response.status != 200:
+                        self.error.emit(f"Download failed: {response.status}")
+                        return False
+                    with open(dest_path, 'wb') as f:
+                        while True:
+                            chunk = await response.content.read(8192)
+                            if not chunk:
+                                break
+                            f.write(chunk)
+            self.message.emit(f"Downloaded to {dest_path}")
+            return True
         except Exception as e:
-             self.error.emit(f"Error downloading {version}: {str(e)}")
-        self.wineStatusChanged.emit()
+            self.error.emit(f"Error during download: {str(e)}")
+            return False
 
     def _extract_tar(self, version: str) -> None:
         archive_dir = Path.home() / WINE_VERSIONS_DIR
-        archive_path = archive_dir / f"{version}.tar.xz"
-        if not archive_path.exists():
-            archive_path = archive_dir / f"{version}.tar.gz"
-            if not archive_path.exists():
-                self.error.emit(f"Archive for {version} (.tar.xz or .tar.gz) does not exist.")
-                return
+        archive_path = self._find_tar_archive(archive_dir, version)
+        if not archive_path:
+            self.error.emit(f"Archive for {version} not found.")
+            return
 
         extract_to = archive_dir
         extract_to.mkdir(parents=True, exist_ok=True)
 
-        if archive_path.suffixes[-2:] == ['.tar', '.xz']:
-            mode = "r:xz"
-        elif archive_path.suffixes[-2:] == ['.tar', '.gz']:
-            mode = "r:gz"
-        else:
+        mode = self._get_tar_mode(archive_path)
+        if not mode:
             self.error.emit(f"Unsupported archive format: {archive_path.name}")
             return
 
@@ -705,24 +720,43 @@ class AppEngine(QObject):
             with tarfile.open(archive_path, mode) as tar:
                 tar.extractall(path=extract_to, filter=self._filter_function)
 
+            top_level_dir = self._get_top_level_dir_from_tar(archive_path, mode)
+            if not top_level_dir:
+                self.error.emit(f"Could not determine top-level directory in {archive_path.name}")
+                return
+
+            original_folder = extract_to / top_level_dir
+            renamed_folder = extract_to / version
+            if original_folder.exists():
+                os.rename(original_folder, renamed_folder)
+
+            self.message.emit(f"Extracted {version} to {extract_to}")
+        except Exception as e:
+            self.error.emit(f"Failed to extract {version}: {str(e)}")
+
+    def _find_tar_archive(self, archive_dir: Path, version: str) -> Path | None:
+        for ext in ["xz", "gz"]:
+            candidate = archive_dir / f"{version}.tar.{ext}"
+            if candidate.exists():
+                return candidate
+        return None
+
+    def _get_tar_mode(self, archive_path: Path) -> str | None:
+        if archive_path.suffixes[-2:] == ['.tar', '.xz']:
+            return "r:xz"
+        elif archive_path.suffixes[-2:] == ['.tar', '.gz']:
+            return "r:gz"
+        return None
+
+    def _get_top_level_dir_from_tar(self, archive_path: Path, mode: str) -> str | None:
+        try:
             with tarfile.open(archive_path, mode) as tar:
                 members = tar.getmembers()
                 if not members:
-                    self.error.emit(f"No files found in archive {archive_path.name}")
-                    return
-                top_level_directory = members[0].name.split('/')[0]
-
-            original_folder_path = extract_to / top_level_directory
-            renamed_folder_path = extract_to / version
-            if original_folder_path.exists():
-                os.rename(original_folder_path, renamed_folder_path)
-
-            self.message.emit(f"Extracted {version} to {extract_to}")
-
-        except tarfile.TarError as e:
-            self.error.emit(f"Error extracting {version}: {str(e)}")
-        except Exception as e:
-            self.error.emit(f"Unexpected error extracting {version}: {str(e)}")
+                    return None
+                return members[0].name.split('/')[0]
+        except Exception:
+            return None
 
     def _filter_function(self, tarinfo, path):
         return tarinfo
