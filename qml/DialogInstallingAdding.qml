@@ -78,7 +78,7 @@ WindowDialog {
             Layout.columnSpan: 2
         }
 
-        Label { text: qsTr(`Select the ${ root.state === "installing" ? "installation" : "executable" } file:`) }
+        Label { text: root.state === "installing" ?  qsTr("Select the installation file:") : qsTr("Select the executable file:") }
         RowLayout {
             Layout.columnSpan: 2
             TextField {
@@ -93,7 +93,7 @@ WindowDialog {
                 }
                  FileDialog {
                     id: fileDialog
-                    title: qsTr(`Select the ${ root.state === "installing" ? "installation" : "executable" } file`)
+                    title: root.state === "installing" ?  qsTr("Select the installation file") : qsTr("Select the executable file")
                     onAccepted: {
                         textFieldExeName.text = selectedFile.toString().replace("file://", "");
                     }
@@ -101,7 +101,7 @@ WindowDialog {
             }
         }
 
-        Label { text: "Wine" }
+        Label { text: "Wine:" }
         ComboBox {
             id: comboBoxWine
             Layout.fillWidth: true
@@ -109,7 +109,7 @@ WindowDialog {
             model: root.wineList
         }
 
-        Label { text: qsTr("Installer preset") }
+        Label { text: qsTr("Installer preset:") }
         ComboBox {
             id: comboBoxWinVer
             Layout.fillWidth: true

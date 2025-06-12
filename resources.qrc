@@ -22,6 +22,7 @@
         <file>qml/Controls/ComboBox.qml</file>
         <file>qml/Controls/ScrollBar.qml</file>
         <file>qml/Controls/TabButton.qml</file>
+        <file>qml/Controls/MenuSeparator.qml</file>
         <file>img/icon.png</file>
         <file>img/install-64.png</file>
         <file>img/add-64.png</file>
@@ -35,7 +36,6 @@
         <file>img/paste-32.png</file>
         <file>img/copy-32.png</file>
         <file>img/cut-32.png</file>
-        <file>qml/Controls/MenuSeparator.qml</file>
         <file>img/stop-64.png</file>
         <file>img/cut-32-light.png</file>
         <file>img/paste-32-light.png</file>

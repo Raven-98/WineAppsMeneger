@@ -15,6 +15,9 @@ from PySide6.QtCore import QObject
 from PySide6.QtCore import Signal, Slot
 from PySide6.QtCore import QCoreApplication
 from PySide6.QtGui import QIcon
+from PySide6.QtCore import QLocale
+from PySide6.QtCore import QTranslator
+from PySide6.QtCore import QSettings
 from pathlib import Path
 from queue import Queue
 from threading import Thread
@@ -187,6 +190,20 @@ class AppSettingsDB(QObject):
         return [row[0] for row in cursor.fetchall()]
 
 
+class SettingsManager(QObject):
+    def __init__(self):
+        super().__init__()
+        self.settings = QSettings("Raven-98", APP_NAME)
+
+    @Slot(str, str)
+    def saveSetting(self, key: str, value: str) -> None:
+        self.settings.setValue(key, value)
+
+    @Slot(str, result=str)
+    def loadSetting(self, key: str) -> str:
+        return self.settings.value(key, "")
+
+
 class AppEngine(QObject):
     updateModelSignal = Signal(list)
     error = Signal(str)
@@ -201,6 +218,7 @@ class AppEngine(QObject):
     appStarted = Signal(str)
     appExited = Signal(str)
     runningAppsChanged = Signal(list)
+    # setedLanguage = Signal()
 
     def __init__(self):
         super().__init__()
@@ -901,6 +919,27 @@ class AppEngine(QObject):
         self.appExited.emit(appName)
         self.runningAppsChanged.emit(list(self.running_apps.keys()))
 
+    def _find_available_languages(self) -> list:
+        langs = []
+        lang_dir = APP_PATH / "locales"
+        for file in os.listdir(lang_dir):
+            if file.endswith(".qm"):
+                info = self._get_language_info_from_qm(file)
+                if info:
+                    langs.append(info)
+        return langs
+
+    def _get_language_info_from_qm(self, filename: str) -> dict:
+        match = re.match(r'([a-z]{2})(?:_([A-Z]{2}))?\.qm', filename)
+        if not match:
+            return None
+        lang = match.group(1)
+        country = match.group(2) if match.group(2) else ""
+        locale_code = f"{lang}_{country}" if country else lang
+        locale = QLocale(locale_code)
+        name = locale.nativeLanguageName().capitalize()
+        return { "name": name, "code": locale_code}
+
 ## public
 
     @Slot(dict)
@@ -1025,6 +1064,25 @@ class AppEngine(QObject):
     def isAppRunning(self, appName: str) -> bool:
         return self._is_app_running(appName)
 
+    @Slot(result=list)
+    def getLanguagesList(self) -> list:
+        return self._find_available_languages()
+
+    @Slot(str)
+    def setLanguage(self, lang: str, reload: bool = True) -> None:
+        if hasattr(self, "translator"):
+            QGuiApplication.instance().removeTranslator(self.translator)
+        self.translator = QTranslator()
+        if self.translator.load(f"{lang}.qm", "locales"):
+            QGuiApplication.instance().installTranslator(self.translator)
+            self.message.emit(f"Language changed to {lang}")
+        else:
+            self.error.emit(f"Failed to load translation for {lang}")
+        self.settingsManager.saveSetting("lang", lang)
+        if reload:
+            self._reload_ui()
+        # self.setedLanguage.emit()
+
     @Slot(str)
     def onError(self, err: str) -> None:
         logger.error(err)
@@ -1032,17 +1090,6 @@ class AppEngine(QObject):
     @Slot(str)
     def onMessage(self, mess: str) -> None:
         logger.info(mess)
-
-
-###
-    # @Slot()
-    # def test(self): pass
-
-    # @Slot(result=dict)
-    # def testGetWines(self):
-    #     from test_const import wines
-    #     self.getedWineList.emit(wines)
-
 
 
 if __name__ == "__main__":
@@ -1057,8 +1104,25 @@ if __name__ == "__main__":
     engine = QQmlApplicationEngine()
 
     appEngine = AppEngine()
+    settingsManager = SettingsManager()
+
+    appEngine.settingsManager = settingsManager
+    def reload_ui():
+        for obj in engine.rootObjects():
+            obj.deleteLater()
+        engine.clearComponentCache()
+        engine.load("qrc:/qml/main.qml")
+        appEngine.initScanApp()
+    appEngine._reload_ui = reload_ui
+    # appEngine.setedLanguage.connect(reload_ui)
+
+    currLang = settingsManager.loadSetting("lang")
+    if currLang:
+        appEngine.setLanguage(currLang, False)
+
     engine.rootContext().setContextProperty("qApp", app)
     engine.rootContext().setContextProperty("AppEngine", appEngine)
+    engine.rootContext().setContextProperty("SettingsManager", settingsManager)
 
     engine.addImportPath("qrc:/qml")
 

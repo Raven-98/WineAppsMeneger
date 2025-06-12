@@ -12,6 +12,9 @@ ApplicationWindow {
     minimumHeight: 480
     title: qApp.applicationName + " " + qApp.applicationVersion
 
+    property var langsList
+    property string currLang
+
     function log(text) {
         labelLog.color = Colors.info
         labelLog.text = text;
@@ -67,6 +70,36 @@ ApplicationWindow {
             errorDialog.show()
             error(errorDialog.text)
         }
+
+        SettingsManager.saveSetting("lang", currLang)
+    }
+
+    Component.onCompleted: {
+        langsList = AppEngine.getLanguagesList()
+        currLang = SettingsManager.loadSetting("lang")
+        // if (currLang) AppEngine.setLanguage(currLang)
+        if (!currLang) currLang = CurrLang
+        for (let lang of langsList) {
+            let action = `
+                import QtQuick
+                import QtQuick.Controls
+                Action {
+                    text: "${lang.name}"
+                    checkable: true
+                    checked: appWindow.currLang === "${lang.code}"
+                    onTriggered: {
+                        for (let lang of appWindow.langsList) {
+                            if (lang.name === text) {
+                                appWindow.currLang = lang.code
+                                AppEngine.setLanguage(lang.code)
+                            }
+                        }
+                    }
+                }
+            `
+            let obj = Qt.createQmlObject(action, menuLanguage)
+            if (obj) menuLanguage.addAction(obj)
+        }
     }
 
     DialogConfig { id: dialogConfig }
@@ -87,7 +120,7 @@ ApplicationWindow {
             title: qsTr("&File")
             Action {
                 id: actionInstallApplications
-                text: "Install application"
+                text: qsTr("Install application")
                 shortcut: "Ctrl+I"
                 icon.source: "qrc:/img/install-64.png"
                 onTriggered: {
@@ -99,7 +132,7 @@ ApplicationWindow {
             }
             Action {
                 id: actionAddApplications
-                text: "Add application"
+                text: qsTr("Add application")
                 shortcut: "Ctrl+A"
                 icon.source: "qrc:/img/add-64.png"
                 onTriggered: {
@@ -145,20 +178,9 @@ ApplicationWindow {
         Menu {
             id: menuSettings
             title: qsTr("&Settings")
-            enabled: false
             Menu {
                 id: menuLanguage
                 title: qsTr("Language")
-                Action {
-                    id: actionEnglish
-                    text: "English"
-                    checkable: true
-                }
-                Action {
-                    id: actionUkrainian
-                    text: "Українська"
-                    checkable: true
-                }
             }
         }
     }
