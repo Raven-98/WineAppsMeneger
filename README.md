@@ -75,14 +75,21 @@ pip install -r requirements.txt
 ```bash
  pyside6-rcc resources.qrc -o rc_resources.py 
 ```
-5. Завантажити [umu-launcher](https://github.com/Open-Wine-Components/umu-launcher)
+5. Зкомпілювати переклади:
+
+```bash
+pyside6-lrelease translations/en_US.ts -qm locales/en_US.qm
+pyside6-lrelease translations/uk_UA.ts -qm locales/uk_UA.qm
+```
+
+7. Завантажити [umu-launcher](https://github.com/Open-Wine-Components/umu-launcher)
 
 ```bash
 curl -L https://github.com/Open-Wine-Components/umu-launcher/releases/download/1.2.6/umu-launcher-1.2.6-zipapp.tar | tar -xf - && mv umu/umu-run ./umu-run && rm -rf umu
 ```
 *Ви можете використовувати інші версії `umu-launcher`, проте наразі підтримується лише використання `umu-launcher-zipapp`*
 
-6. Запустити програму:
+7. Запустити програму:
 
 ```bash
 python main.py
