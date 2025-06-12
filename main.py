@@ -1073,7 +1073,7 @@ class AppEngine(QObject):
         if hasattr(self, "translator"):
             QGuiApplication.instance().removeTranslator(self.translator)
         self.translator = QTranslator()
-        if self.translator.load(f"{lang}.qm", "locales"):
+        if self.translator.load(f"{lang}.qm", str(APP_PATH / "locales")):
             QGuiApplication.instance().installTranslator(self.translator)
             self.message.emit(f"Language changed to {lang}")
         else:
