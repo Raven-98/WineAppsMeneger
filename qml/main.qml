@@ -77,29 +77,6 @@ ApplicationWindow {
     Component.onCompleted: {
         langsList = AppEngine.getLanguagesList()
         currLang = SettingsManager.loadSetting("lang")
-        // if (currLang) AppEngine.setLanguage(currLang)
-        if (!currLang) currLang = CurrLang
-        for (let lang of langsList) {
-            let action = `
-                import QtQuick
-                import QtQuick.Controls
-                Action {
-                    text: "${lang.name}"
-                    checkable: true
-                    checked: appWindow.currLang === "${lang.code}"
-                    onTriggered: {
-                        for (let lang of appWindow.langsList) {
-                            if (lang.name === text) {
-                                appWindow.currLang = lang.code
-                                AppEngine.setLanguage(lang.code)
-                            }
-                        }
-                    }
-                }
-            `
-            let obj = Qt.createQmlObject(action, menuLanguage)
-            if (obj) menuLanguage.addAction(obj)
-        }
     }
 
     DialogConfig { id: dialogConfig }
@@ -181,6 +158,20 @@ ApplicationWindow {
             Menu {
                 id: menuLanguage
                 title: qsTr("Language")
+                Instantiator {
+                    model: appWindow.langsList
+                    delegate: Action {
+                        text: modelData.name
+                        checkable: true
+                        checked: appWindow.currLang === modelData.code
+                        onTriggered: {
+                            appWindow.currLang = modelData.code
+                            AppEngine.setLanguage(modelData.code)
+                        }
+                    }
+                    onObjectAdded: (index, action) => menuLanguage.addAction(action)
+                    onObjectRemoved: (index, action) => menuLanguage.removeAction(action)
+                }
             }
         }
     }

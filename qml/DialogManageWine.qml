@@ -36,7 +36,6 @@ WindowDialog {
         else
             tabsData["Installed"].clear()
 
-
         for (let wine of wineList) {
             let wineTp = wine.split(" - ")[0]
             if (tabsList.indexOf(wineTp) === -1 && wineTp !== "system") {
