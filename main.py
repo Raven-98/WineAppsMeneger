@@ -357,7 +357,13 @@ class AppEngine(QObject):
         else:
             self.error.emit(f"Installer exited with code {process.returncode}.")
             if os.path.exists(wine_prefix_path):
-                shutil.rmtree(wine_prefix_path)
+                try:
+                    subprocess.run(["wineserver", "-k"], env=env)
+                    await asyncio.sleep(1)
+                    shutil.rmtree(str(wine_prefix_path))
+                except Exception as e:
+                    self.error.emit(f"Failed to remove Wine prefix: {e}")
+
         return None
 
     async def _parse_system_reg(self, wine_prefix_path: Path) -> Path:
