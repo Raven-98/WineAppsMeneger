@@ -30,6 +30,7 @@ import configparser
 import json
 import time
 import threading
+from urllib.parse import unquote
 
 
 """
@@ -340,9 +341,10 @@ class AppEngine(QObject):
 
     async def _run_installer(self, wine_prefix_path: Path, wine_path: Path, app_exe: str, env: dict, app_name: str) -> Path:
         process = None
+        app_exe_path = Path(unquote(app_exe)).resolve()
         try:
             process = subprocess.Popen(
-                        [wine_path, app_exe],
+                        [wine_path, str(app_exe_path)],
                         env=env,
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE
